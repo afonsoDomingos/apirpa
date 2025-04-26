@@ -14,9 +14,10 @@ let usuarios = [];
   const clienteSenha = await bcrypt.hash('cliente123', salt);
 
   usuarios.push(
-    { id: 1, nome: 'Administrador1', email: 'admin1@example.com', senha: adminSenha, role: 'admin' },
-    { id: 2, nome: 'Administrador2', email: 'admin2@example.com', senha: adminSenha, role: 'admin' },
-    { id: 3, nome: 'Cliente', email: 'cliente@example.com', senha: clienteSenha, role: 'cliente' }
+    { id: 1, nome: 'Afonso', email: 'admin1@example.com', senha: adminSenha, role: 'admin' },
+    { id: 2, nome: 'Pindula', email: 'admin2@example.com', senha: adminSenha, role: 'admin' },
+    { id: 3, nome: 'Armando', email: 'cliente@example.com', senha: clienteSenha, role: 'cliente' },
+    { id: 3, nome: 'Tania', email: 'cliente1@example.com', senha: clienteSenha, role: 'cliente' }
   );
 })();
 
