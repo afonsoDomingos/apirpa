@@ -11,23 +11,12 @@ const port = process.env.PORT || 5000;
 // Configurar o CORS para permitir requisições da origem http://localhost:3000 
 //app.use(cors({ origin: 'http://localhost:3000' }));
 
-const cors = require('cors');
 
-// Defina o CORS para permitir requisições de ambas as origens
-const allowedOrigins = [
-  'https://apirpa.onrender.com',  // Backend (Render)
-  'https://recuperaaqui.vercel.app',  // Frontend (Vercel)
-];
-
+// ✅ CORS correto:
 app.use(cors({
-  origin: function(origin, callback) {
-    // Se a origem estiver na lista de permitidos, permita
-    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: 'https://recuperaaqui.vercel.app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
 }));
 //app.use(cors({ origin: 'https://apirpa.onrender.com' }));
 
