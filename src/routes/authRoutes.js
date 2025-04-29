@@ -21,6 +21,12 @@ let usuarios = [];
   );
 })();
 
+
+
+router.get('/', (req, res) => {
+  res.send('Rota de autenticação funcionando!');
+});
+
 // Rota de registro de usuário (POST)
 router.post('/register', async (req, res) => {
   const { nome, email, senha, role } = req.body;

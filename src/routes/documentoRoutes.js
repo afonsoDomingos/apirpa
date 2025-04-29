@@ -24,7 +24,14 @@ let documentos = [
 //http://localhost:5000/api/documentos?provincia
 
 
+
 // Rota para listar documentos ou buscar por nome/número
+
+
+router.get('/', (req, res) => {
+  res.send('Rota de documentos funcionando!');
+});
+
 router.get('/documentos', (req, res) => {
   const { nome_completo, numero_documento, tipo_documento, provincia } = req.query;
 

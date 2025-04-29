@@ -16,8 +16,13 @@ app.use(cors({ origin: 'https://apirpa.onrender.com' }));
 app.use(express.json());
 
 // Rotas da API
+app.get('/', (req, res) => {
+  res.send('API rodando com sucesso!');
+});
 app.use('/api', documentoRoutes); 
 app.use('/api/auth', authRoutes); // Usar o prefixo '/api/auth' para as rotas de autenticação
+
+
 
 // Iniciar o servidor
 app.listen(port, () => {
