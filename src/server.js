@@ -8,8 +8,9 @@ const authRoutes = require('./routes/authRoutes'); // Importar as rotas de auten
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Configurar o CORS para permitir requisições da origem http://localhost:3000
-app.use(cors({ origin: 'http://localhost:3000' }));
+// Configurar o CORS para permitir requisições da origem http://localhost:3000 
+//app.use(cors({ origin: 'http://localhost:3000' }));
+app.use(cors({ origin: 'https://apirpa.onrender.com' }));
 
 // Middleware para lidar com dados JSON
 app.use(express.json());
