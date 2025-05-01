@@ -1,25 +1,37 @@
-const { Sequelize, DataTypes } = require('sequelize');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
-// Conectando ao banco de dados
-const sequelize = new Sequelize('database', 'user', 'password', {
-  host: 'localhost',
-  dialect: 'mysql' // Pode ser 'postgres', 'sqlite' ou 'mssql'
-});
-
-// Definição do modelo (tabela 'Users')
-const User = sequelize.define('User', {
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false
+const authSchema = new mongoose.Schema({
+  nome: { type: String, required: true },
+  email: { 
+    type: String, 
+    unique: true, 
+    required: true, 
+    match: [/^\S+@\S+\.\S+$/, 'Por favor, forneça um email válido.']
   },
-  email: {
-    type: DataTypes.STRING,
-    unique: true
+  senha: { 
+    type: String, 
+    required: true, 
+    minlength: [6, 'A senha deve ter pelo menos 6 caracteres.'] 
+  },
+  role: { 
+    type: String, 
+    enum: ['admin', 'cliente'], 
+    default: 'cliente' 
   }
 });
 
-// Sincronizar modelo com o banco de dados
-sequelize.sync()
-  .then(() => console.log("Banco de dados sincronizado"))
-  .catch(err => console.error("Erro ao sincronizar:", err));
+// Criptografar a senha antes de salvar
+authSchema.pre('save', async function(next) {
+  if (!this.isModified('senha')) return next();
+  this.senha = await bcrypt.hash(this.senha, 10);
+  next();
+});
+
+// Método para comparar a senha fornecida com a senha armazenada
+authSchema.methods.matchSenha = async function(senhaFornecida) {
+  return await bcrypt.compare(senhaFornecida, this.senha);
+};
+
+module.exports = mongoose.model('Usuario', authSchema);
 

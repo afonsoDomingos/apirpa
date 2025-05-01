@@ -1,24 +1,22 @@
-// server.js ou app.js
 require('dotenv').config(); // Carregar variáveis de ambiente
+
+console.log('MONGO_URI:', process.env.MONGO_URI); // Verifica se a variável está sendo carregada
+
+const connectDB = require('./config/db');
 const express = require('express');
 const cors = require('cors');
-const documentoRoutes = require('./routes/documentoRoutes'); // Importar as rotas de documentos
-const authRoutes = require('./routes/authRoutes'); // Importar as rotas de autenticação
+const documentoRoutes = require('./routes/documentoRoutes.js');
+const authRoutes = require('./routes/authRoutes.js');
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Configurar o CORS para permitir requisições da origem http://localhost:3000 
-//app.use(cors({ origin: 'http://localhost:3000' }));
-
-
-// ✅ CORS correto:
+// CORS Configuração
 app.use(cors({
-  origin: 'https://recuperaaqui.vercel.app',
+  origin: 'https://recuperaaqui.vercel.app', // A origem do frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
-//app.use(cors({ origin: 'https://apirpa.onrender.com' }));
 
 // Middleware para lidar com dados JSON
 app.use(express.json());
@@ -30,7 +28,7 @@ app.get('/', (req, res) => {
 app.use('/api', documentoRoutes); 
 app.use('/api/auth', authRoutes); // Usar o prefixo '/api/auth' para as rotas de autenticação
 
-
+connectDB(); // Conectar ao MongoDB
 
 // Iniciar o servidor
 app.listen(port, () => {

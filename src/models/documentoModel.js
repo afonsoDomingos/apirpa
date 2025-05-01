@@ -1,39 +1,15 @@
-const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = new Sequelize(process.env.DATABASE_URL);
+// models/documentoModel.js
 
-const Documento = sequelize.define('Documento', {
-  nome_completo: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  tipo_documento: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  contacto: {
-    type: DataTypes.STRING, // Mudança para STRING para suportar números com espaços ou símbolos
-    allowNull: false
-  },
-  provincia: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  numero_documento: {
-    type: DataTypes.STRING, // Mudança para STRING, pois números de documentos podem conter letras ou símbolos
-    allowNull: false,
-    unique: true
-  },
-  data_perda: {
-    type: DataTypes.DATE,
-    allowNull: false
-  },
-  origem: { // Corrigido de 'origin' para 'origem', para manter consistência com o resto do código
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      isIn: [['proprietario', 'reportado']]
-    }
-  }
-});
+const mongoose = require('mongoose');
 
-module.exports = { Documento, sequelize };
+const documentoSchema = new mongoose.Schema({
+  nome_completo: { type: String, required: true, trim: true },
+  tipo_documento: { type: String, required: true, trim: true },
+  numero_documento: { type: String, required: true, trim: true },
+  provincia: { type: String, required: true },
+  data_perda: { type: String, required: true }, // ou: type: Date
+  origem: { type: String, enum: ['proprietario', 'reportado'], required: true },
+  contacto: { type: String, required: true, trim: true }
+}, { timestamps: true });
+
+module.exports = mongoose.model('Documento', documentoSchema);

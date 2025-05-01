@@ -1,93 +1,71 @@
 const express = require('express');
 const router = express.Router();
+const Documento = require('../models/documentoModel');
 
-// Simulando um banco de dados com um array (para testes)
-let documentos = [
-  { nome_completo: 'João Silva', tipo_documento: 'Bilhete de Identidade', numero_documento: '123456789', provincia: 'Maputo', data_perda: '2025-02-08', origem: 'proprietario', contacto: '+258 84 123 4567' },
-  { nome_completo: 'Afonso Domingos', tipo_documento: 'Cartão de Eleitor', numero_documento: '104903847', provincia: 'Maputo', data_perda: '2025-01-07', origem: 'reportado', contacto: '+258 82 987 6543' },
-  { nome_completo: 'Maria Souza', tipo_documento: 'Passaporte', numero_documento: '987654321', provincia: 'Beira', data_perda: '2025-02-07', origem: 'proprietario', contacto: '+258 85 456 7890' },
-  
-  // Novos documentos reportados
-  { nome_completo: 'Carlos Almeida', tipo_documento: 'Carta de Condução', numero_documento: '112233445', provincia: 'Nampula', data_perda: '2025-02-09', origem: 'reportado', contacto: '+258 82 111 2222' },
-  { nome_completo: 'Ana Costa', tipo_documento: 'Bilhete de Identidade', numero_documento: '556677889', provincia: 'Maputo', data_perda: '2025-02-10', origem: 'reportado', contacto: '+258 84 333 4444' },
-  { nome_completo: 'José Marques', tipo_documento: 'Passaporte', numero_documento: '998877665', provincia: 'Beira', data_perda: '2025-02-11', origem: 'reportado', contacto: '+258 85 555 6666' },
-  { nome_completo: 'Lúcia Pereira', tipo_documento: 'Cartão de Eleitor', numero_documento: '223344556', provincia: 'Tete', data_perda: '2025-02-12', origem: 'reportado', contacto: '+258 82 777 8888' }
-];
-
-
-//Para Teste//
-//http://localhost:5000/api/documentos
-//http://localhost:5000/api/documentos/reportados
-//http://localhost:5000/api/documentos/proprietarios
-//http://localhost:5000/api/documentos/busca
-//http://localhost:5000/api/documentos?numero_documento=104903847
-//http://localhost:5000/api/documentos?provincia
-
-
-
-// Rota para listar documentos ou buscar por nome/número
-
-
+// Teste de rota
 router.get('/', (req, res) => {
-  res.send('Rota de documentos funcionando!');
+  res.send('Rota de documentos funcionando com MongoDB!');
 });
 
-router.get('/documentos', (req, res) => {
+// Buscar documentos com filtros (somente reportados)
+router.get('/documentos', async (req, res) => {
   const { nome_completo, numero_documento, tipo_documento, provincia } = req.query;
+  let filtro = { origem: 'reportado' };
 
-  // Filtrando apenas documentos reportados
-  let resultados = documentos.filter(doc => doc.origem === "reportado");
-
-  
-
-  // Validação e filtragem
   if (nome_completo) {
-    const nomeCompletoLower = nome_completo.toLowerCase();
-    resultados = resultados.filter(doc => doc.nome_completo.toLowerCase() === nomeCompletoLower);
+    filtro.nome_completo = { $regex: new RegExp(nome_completo, 'i') };
   }
-
   if (numero_documento) {
-    resultados = resultados.filter(doc => doc.numero_documento === numero_documento);
+    filtro.numero_documento = numero_documento.trim();
   }
-
   if (tipo_documento) {
-    const tipoDocumentoLower = tipo_documento.toLowerCase();
-    resultados = resultados.filter(doc => doc.tipo_documento.toLowerCase() === tipoDocumentoLower);
+    filtro.tipo_documento = { $regex: new RegExp(tipo_documento, 'i') };
   }
-  
-
   if (provincia) {
-    const provinciaLower = provincia.toLowerCase();
-    resultados = resultados.filter(doc => doc.provincia.toLowerCase() === provinciaLower);
+    filtro.provincia = { $regex: new RegExp(provincia, 'i') };
   }
 
-  
-
-  // Se não houver resultados, retornar uma mensagem informativa
-  if (resultados.length === 0) {
-    return res.status(404).json({ message: 'Nenhum documento encontrado.' });
+  try {
+    const resultados = await Documento.find(filtro);
+    if (resultados.length === 0) {
+      return res.status(404).json({ message: 'Nenhum documento encontrado.' });
+    }
+    res.status(200).json(resultados);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao buscar documentos.', error: err.message });
   }
-
-  res.json(resultados);
 });
 
-
-
-
-// 🟠 Rota para buscar apenas documentos "reportados"
-router.get('/documentos/reportados', (req, res) => {
-  const resultados = documentos.filter(doc => doc.origem === 'reportado');
-  res.status(200).json(resultados);
+// Buscar apenas documentos reportados
+router.get('/documentos/reportados', async (req, res) => {
+  try {
+    const documentos = await Documento.find({ origem: 'reportado' });
+    res.status(200).json(documentos);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao buscar documentos reportados.', error: err.message });
+  }
 });
 
-// 🟠 Rota para buscar apenas documentos "proprietario"
-router.get('/documentos/proprietarios', (req, res) => {
-  const resultados = documentos.filter(doc => doc.origem === 'proprietario');
-  res.status(200).json(resultados);
+// Buscar apenas documentos de proprietários
+router.get('/documentos/proprietarios', async (req, res) => {
+  try {
+    const documentos = await Documento.find({ origem: 'proprietario' });
+    res.status(200).json(documentos);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao buscar documentos de proprietários.', error: err.message });
+  }
 });
-// ✏️ Rota para cadastrar um novo documento
-router.post('/documentos', (req, res) => {
-  const { nome_completo, tipo_documento, numero_documento, provincia, data_perda, origem, contacto } = req.body;
+
+// Cadastrar novo documento
+router.post('/documentos', async (req, res) => {
+  let { nome_completo, tipo_documento, numero_documento, provincia, data_perda, origem, contacto } = req.body;
+
+  // Limpar espaços
+  nome_completo = nome_completo?.trim();
+  tipo_documento = tipo_documento?.trim();
+  numero_documento = numero_documento?.trim();
+  provincia = provincia?.trim();
+  contacto = contacto?.trim();
 
   if (!nome_completo || !tipo_documento || !numero_documento || !provincia || !data_perda || !origem || !contacto) {
     return res.status(400).json({ message: 'Todos os campos são obrigatórios.' });
@@ -97,67 +75,77 @@ router.post('/documentos', (req, res) => {
     return res.status(400).json({ message: 'Origem inválida. Escolha "proprietario" ou "reportado".' });
   }
 
-  const novoDocumento = { 
-    nome_completo, 
-    tipo_documento, 
-    numero_documento: numero_documento.toString(), 
-    provincia, 
-    data_perda: new Date(data_perda).toISOString().split('T')[0], // Garantindo formato de data
-    origem, 
-    contacto 
-  };
+  try {
+    const novoDocumento = new Documento({
+      nome_completo,
+      tipo_documento,
+      numero_documento,
+      provincia,
+      data_perda: new Date(data_perda).toISOString().split('T')[0],
+      origem,
+      contacto
+    });
 
-  documentos.push(novoDocumento);
-
-  res.status(201).json(novoDocumento);
+    await novoDocumento.save();
+    res.status(201).json(novoDocumento);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao cadastrar documento.', error: err.message });
+  }
 });
 
-// 🛠️ Rota para atualizar um documento por número do documento
-router.put('/documentos/:numero_documento', (req, res) => {
+// Atualizar documento por número
+router.put('/documentos/:numero_documento', async (req, res) => {
   const { numero_documento } = req.params;
-  const { nome_completo, tipo_documento, provincia, data_perda, origem, contacto } = req.body;
+  const atualizacoes = req.body;
 
-  const index = documentos.findIndex(doc => doc.numero_documento === numero_documento);
-
-  if (index === -1) {
-    return res.status(404).json({ message: 'Documento não encontrado.' });
-  }
-
-  if (origem && !['proprietario', 'reportado'].includes(origem)) {
+  if (atualizacoes.origem && !['proprietario', 'reportado'].includes(atualizacoes.origem)) {
     return res.status(400).json({ message: 'Origem inválida. Escolha "proprietario" ou "reportado".' });
   }
 
-  documentos[index] = {
-    ...documentos[index],
-    nome_completo: nome_completo || documentos[index].nome_completo,
-    tipo_documento: tipo_documento || documentos[index].tipo_documento,
-    provincia: provincia || documentos[index].provincia,
-    data_perda: data_perda ? new Date(data_perda).toISOString().split('T')[0] : documentos[index].data_perda,
-    origem: origem || documentos[index].origem,
-    contacto: contacto || documentos[index].contacto
-  };
-
-  res.status(200).json(documentos[index]);
-});
-
-// 🗑️ Rota para deletar um documento
-router.delete('/documentos/:numero_documento', (req, res) => {
-  const { numero_documento } = req.params;
-  const index = documentos.findIndex(doc => doc.numero_documento === numero_documento);
-
-  if (index === -1) {
-    return res.status(404).json({ message: 'Documento não encontrado.' });
+  if (atualizacoes.data_perda) {
+    atualizacoes.data_perda = new Date(atualizacoes.data_perda).toISOString().split('T')[0];
   }
 
-  const documentoRemovido = documentos.splice(index, 1);
+  try {
+    const documento = await Documento.findOneAndUpdate(
+      { numero_documento },
+      { $set: atualizacoes },
+      { new: true }
+    );
 
-  res.status(200).json({ message: 'Documento excluído com sucesso.', documento: documentoRemovido[0] });
+    if (!documento) {
+      return res.status(404).json({ message: 'Documento não encontrado.' });
+    }
+
+    res.status(200).json(documento);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao atualizar documento.', error: err.message });
+  }
 });
 
-// 📊 Contar quantos documentos foram reportados
-router.get('/documentos/count', (req, res) => {
-  const count = documentos.filter(doc => doc.origem === 'reportado').length;
-  res.status(200).json({ count });
+// Deletar documento por número
+router.delete('/documentos/:numero_documento', async (req, res) => {
+  const { numero_documento } = req.params;
+
+  try {
+    const documento = await Documento.findOneAndDelete({ numero_documento });
+    if (!documento) {
+      return res.status(404).json({ message: 'Documento não encontrado.' });
+    }
+    res.status(200).json({ message: 'Documento excluído com sucesso.', documento });
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao deletar documento.', error: err.message });
+  }
+});
+
+// Contar documentos reportados
+router.get('/documentos/count', async (req, res) => {
+  try {
+    const count = await Documento.countDocuments({ origem: 'reportado' });
+    res.status(200).json({ count });
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao contar documentos.', error: err.message });
+  }
 });
 
 module.exports = router;
