@@ -27,7 +27,16 @@ app.get('/', (req, res) => {
 });
 app.use('/api', documentoRoutes); 
 app.use('/api/auth', authRoutes); // Usar o prefixo '/api/auth' para as rotas de autenticação
-
+// Rota para contar documentos Achados
+app.get('/api/documentos/count', (req, res) => {
+  try {
+    const count = documentos.filter(doc => doc.origem === 'reportado').length;
+    res.json({ count });
+  } catch (error) {
+    console.error('Erro ao contar documentos', error);
+    res.status(500).json({ message: 'Erro ao contar documentos' });
+  }
+});
 connectDB(); // Conectar ao MongoDB
 
 // Iniciar o servidor
