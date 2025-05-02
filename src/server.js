@@ -12,11 +12,23 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // CORS Configuração
+const allowedOrigins = [
+  'https://recuperaaqui.vercel.app', // produção
+  'http://localhost:3000'            // desenvolvimento local
+];
+
 app.use(cors({
-  origin: 'https://recuperaaqui.vercel.app', // A origem do frontend
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
+
 
 // Middleware para lidar com dados JSON
 app.use(express.json());
