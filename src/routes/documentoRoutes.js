@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const Documento = require('../models/documentoModel');
-
 // Teste de rota
 router.get('/', (req, res) => {
   res.send('Rota de documentos funcionando com MongoDB!');
@@ -147,5 +146,8 @@ router.get('/documentos/count', async (req, res) => {
     res.status(500).json({ message: 'Erro ao contar documentos.', error: err.message });
   }
 });
+
+
+
 
 module.exports = router;
