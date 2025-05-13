@@ -7,6 +7,15 @@ router.get('/solicitacao', (req, res) => {
   res.send('API de Solicitações funcionando');
 });
 
+// ✅ Esta rota deve vir primeiro (contagem de documentos)
+router.get('/solicitacoes/count', async (req, res) => {
+  try {
+    const count = await SolicitacoesModel.countDocuments();  // Usar o modelo correto, no caso, SolicitacoesModel
+    res.json({ count });
+  } catch (error) {
+    res.status(500).json({ message: 'Erro ao contar solicitações', error: error.message });
+  }
+});
 
 // Rota para solicitar documento (Create)
 router.post('/solicitacoes', async (req, res) => {
@@ -121,23 +130,6 @@ router.put('/solicitacoes/:id', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: 'Erro ao atualizar a solicitação.', error: err.message });
-  }
-});
-
-// Rota para deletar uma solicitação (Delete)
-router.delete('/solicitacoes/:id', async (req, res) => {
-  const { id } = req.params; // Obtém o ID da solicitação da URL
-
-  try {
-    const solicitacaoDeletada = await SolicitacoesModel.findByIdAndDelete(id); // Deleta a solicitação pelo ID
-
-    if (!solicitacaoDeletada) {
-      return res.status(404).json({ message: 'Solicitação não encontrada.' });
-    }
-
-    res.status(200).json({ message: 'Solicitação deletada com sucesso.' });
-  } catch (err) {
-    res.status(500).json({ message: 'Erro ao deletar solicitação.', error: err.message });
   }
 });
 
