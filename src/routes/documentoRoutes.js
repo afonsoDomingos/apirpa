@@ -93,9 +93,9 @@ router.post('/documentos', async (req, res) => {
   }
 });
 
-// Atualizar documento por número
-router.put('/documentos/:numero_documento', async (req, res) => {
-  const { numero_documento } = req.params;
+// Atualizar documento por ID
+router.put('/documentos/:id', async (req, res) => {
+  const { id } = req.params;
   const atualizacoes = req.body;
 
   if (atualizacoes.origem && !['proprietario', 'reportado'].includes(atualizacoes.origem)) {
@@ -107,8 +107,8 @@ router.put('/documentos/:numero_documento', async (req, res) => {
   }
 
   try {
-    const documento = await Documento.findOneAndUpdate(
-      { numero_documento },
+    const documento = await Documento.findByIdAndUpdate(
+      id,
       { $set: atualizacoes },
       { new: true }
     );
@@ -154,12 +154,12 @@ router.patch('/documentos/:id/status', async (req, res) => {
   }
 });
 
-// Deletar documento por número
-router.delete('/documentos/:numero_documento', async (req, res) => {
-  const { numero_documento } = req.params;
+// Deletar documento por ID
+router.delete('/documentos/:id', async (req, res) => {
+  const { id } = req.params;
 
   try {
-    const documento = await Documento.findOneAndDelete({ numero_documento });
+    const documento = await Documento.findByIdAndDelete(id);
     if (!documento) {
       return res.status(404).json({ message: 'Documento não encontrado.' });
     }
