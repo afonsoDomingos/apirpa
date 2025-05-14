@@ -82,7 +82,8 @@ router.post('/documentos', async (req, res) => {
       provincia,
       data_perda: new Date(data_perda).toISOString().split('T')[0],
       origem,
-      contacto
+      contacto,
+      status: 'Pendente'
     });
 
     await novoDocumento.save();
@@ -119,6 +120,37 @@ router.put('/documentos/:numero_documento', async (req, res) => {
     res.status(200).json(documento);
   } catch (err) {
     res.status(500).json({ message: 'Erro ao atualizar documento.', error: err.message });
+  }
+});
+
+
+// Atualizar status (admin somente)
+router.patch('/documentos/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status, isAdmin } = req.body;
+
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Apenas administradores podem alterar o status.' });
+  }
+
+  if (!['Pendente', 'Entregue'].includes(status)) {
+    return res.status(400).json({ error: 'Status inválido. Use "Pendente" ou "Entregue".' });
+  }
+
+  try {
+    const documento = await Documento.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+
+    if (!documento) {
+      return res.status(404).json({ error: 'Documento não encontrado.' });
+    }
+
+    res.json(documento);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao atualizar status.' });
   }
 });
 
