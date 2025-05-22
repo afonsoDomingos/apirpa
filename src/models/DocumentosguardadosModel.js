@@ -1,4 +1,4 @@
-// modelos/documentosGuardadosModel.js
+// src/models/DocumentosGuardadosModel.js
 const mongoose = require('mongoose');
 
 const DocumentoSchema = new mongoose.Schema({
@@ -23,4 +23,4 @@ const DocumentoSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('DocumentoGuardado', DocumentoSchema);
+module.exports = mongoose.model('DocumentosGuardados', DocumentoSchema);
