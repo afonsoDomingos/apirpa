@@ -8,6 +8,7 @@ router.get('/teste', (req, res) => {
   res.json({ mensagem: 'API de documentospessoais funcionando corretamente!' });
 });
 
+
 // GET: Buscar todos os documentos
 router.get('/', async (req, res) => {
   try {
