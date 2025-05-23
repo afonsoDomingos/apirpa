@@ -8,7 +8,9 @@ const cors = require('cors');
 const documentoRoutes = require('./routes/documentoRoutes.js');
 const authRoutes = require('./routes/authRoutes.js');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
-const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes');
+const documentosGuardadosRoutes = require('../models/DocumentosGuardadosModel');
+
+
 
 
 const app = express();
