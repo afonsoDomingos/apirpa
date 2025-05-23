@@ -33,7 +33,14 @@ router.post('/register', async (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
+
   const { email, senha } = req.body;
+
+// Tenta buscar por email ou username
+const usuario = await Usuario.findOne({
+  $or: [{ email }, { nome: email }]
+});
+
 
   try {
     const usuario = await Usuario.findOne({ email });
