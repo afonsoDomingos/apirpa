@@ -52,6 +52,26 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT: Atualizar documento por ID
+router.put('/:id', async (req, res) => {
+  try {
+    const documentoAtualizado = await DocumentosGuardadosModel.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!documentoAtualizado) {
+      return res.status(404).json({ success: false, message: 'Documento não encontrado.' });
+    }
+
+    res.json({ success: true, message: 'Documento atualizado com sucesso.', data: documentoAtualizado });
+  } catch (err) {
+    res.status(400).json({ success: false, message: 'Erro ao atualizar o documento.', error: err.message });
+  }
+});
+
+
 // DELETE: Remover documento por ID
 router.delete('/:id', async (req, res) => {
   try {
