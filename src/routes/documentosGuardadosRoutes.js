@@ -1,8 +1,7 @@
 // rotas/documentosGuardadosRoutes.js
 const express = require('express');
 const router = express.Router();
-
-const DocumentosGuardados = require('../models/DocumentosGuardadosModel');
+const DocumentosGuardadosModel = require('../models/DocumentosGuardadosModel');
 
 
 
@@ -15,7 +14,7 @@ router.get('/teste', (req, res) => {
 // GET: Buscar todos os documentos
 router.get('/', async (req, res) => {
   try {
-    const documentos = await DocumentosGuardados.find().sort({ createdAt: -1 });
+    const documentos = await DocumentosGuardadosModel.find().sort({ createdAt: -1 });
     res.json(documentos);
   } catch (err) {
     res.status(500).json({ message: 'Erro ao buscar documentos.' });
@@ -25,7 +24,7 @@ router.get('/', async (req, res) => {
 // POST: Criar novo documento
 router.post('/', async (req, res) => {
   try {
-    const novoDocumento = new DocumentosGuardados(req.body);
+    const novoDocumento = new DocumentosGuardadosModel(req.body);
     await novoDocumento.save();
     res.status(201).json(novoDocumento);
   } catch (err) {
@@ -36,7 +35,7 @@ router.post('/', async (req, res) => {
 // DELETE: Remover documento por ID
 router.delete('/:id', async (req, res) => {
   try {
-    await DocumentosGuardados.findByIdAndDelete(req.params.id);
+    await DocumentosGuardadosModel.findByIdAndDelete(req.params.id);
     res.json({ message: 'Documento removido com sucesso.' });
   } catch (err) {
     res.status(500).json({ message: 'Erro ao remover o documento.' });
