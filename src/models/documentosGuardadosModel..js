@@ -1,4 +1,4 @@
-// src/models/DocumentosGuardadosModel.js
+// src/models/documentosGuardadosModel.js
 const mongoose = require('mongoose');
 
 const DocumentoSchema = new mongoose.Schema({

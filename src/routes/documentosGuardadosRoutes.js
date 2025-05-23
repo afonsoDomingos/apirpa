@@ -1,7 +1,7 @@
 // rotas/documentosGuardadosRoutes.js
 const express = require('express');
 const router = express.Router();
-const DocumentosGuardadosModel = require('../models/DocumentosGuardadosModel');
+const DocumentosGuardadosModel = require('../models/documentosGuardadosModel.');
 
 
 
