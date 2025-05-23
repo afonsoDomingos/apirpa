@@ -1,7 +1,10 @@
 // rotas/documentosGuardadosRoutes.js
 const express = require('express');
 const router = express.Router();
+
 const DocumentosGuardados = require('../models/DocumentosGuardadosModel');
+
+
 
 // Rota de teste
 router.get('/teste', (req, res) => {

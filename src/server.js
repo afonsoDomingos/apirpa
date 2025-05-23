@@ -8,7 +8,8 @@ const cors = require('cors');
 const documentoRoutes = require('./routes/documentoRoutes.js');
 const authRoutes = require('./routes/authRoutes.js');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
-const documentosGuardadosRoutes = require('../models/DocumentosGuardadosModel');
+const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes.js');
+
 
 
 
@@ -47,6 +48,7 @@ app.use('/api', documentoRoutes);
 app.use('/api/auth', authRoutes); // Usar o prefixo '/api/auth' para as rotas de autenticação
 app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
+
 // Rota para contar documentos Achados
 app.get('/api/documentos/count', (req, res) => {
   try {
