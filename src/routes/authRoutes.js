@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const Usuario = require('../models/authModel');
-const verificarToken = require('../middleware/authMiddleware'); // middleware separado
+const verificarToken = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -19,7 +19,11 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ msg: 'Usuário já existe' });
     }
 
-    const novoUsuario = new Usuario({ nome, email, senha, role: role || 'cliente' });
+    // Criptografa a senha antes de salvar
+    const salt = await bcrypt.genSalt(10);
+    const senhaHash = await bcrypt.hash(senha, salt);
+
+    const novoUsuario = new Usuario({ nome, email, senha: senhaHash, role: role || 'cliente' });
     await novoUsuario.save();
 
     res.status(201).json({ msg: 'Usuário registrado com sucesso', usuario: { nome, email, role: novoUsuario.role } });
@@ -68,7 +72,59 @@ router.get('/usuarios', async (req, res) => {
   }
 });
 
-// Rota de teste protegida
+// Atualizar usuário (somente o próprio usuário ou admin)
+router.patch('/usuarios/:id', verificarToken, async (req, res) => {
+  const { id } = req.params;
+  const { nome, senha } = req.body;
+
+  if (req.usuario.id !== id && req.usuario.role !== 'admin') {
+    return res.status(403).json({ msg: 'Acesso negado' });
+  }
+
+  try {
+    const updateData = {};
+    if (nome) updateData.nome = nome;
+    if (senha) {
+      const salt = await bcrypt.genSalt(10);
+      updateData.senha = await bcrypt.hash(senha, salt);
+    }
+
+    const usuarioAtualizado = await Usuario.findByIdAndUpdate(id, updateData, { new: true });
+    if (!usuarioAtualizado) return res.status(404).json({ msg: 'Usuário não encontrado' });
+
+    res.json({
+      msg: 'Usuário atualizado',
+      usuario: {
+        id: usuarioAtualizado._id,
+        nome: usuarioAtualizado.nome,
+        email: usuarioAtualizado.email,
+        role: usuarioAtualizado.role,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ msg: 'Erro ao atualizar usuário', erro: err.message });
+  }
+});
+
+// Deletar usuário (somente admin)
+router.delete('/usuarios/:id', verificarToken, async (req, res) => {
+  const { id } = req.params;
+
+  if (req.usuario.role !== 'admin') {
+    return res.status(403).json({ msg: 'Acesso negado' });
+  }
+
+  try {
+    const usuarioRemovido = await Usuario.findByIdAndDelete(id);
+    if (!usuarioRemovido) return res.status(404).json({ msg: 'Usuário não encontrado' });
+
+    res.json({ msg: 'Usuário removido com sucesso' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Erro ao remover usuário', erro: err.message });
+  }
+});
+
+// Rota protegida (teste)
 router.get('/protegida', verificarToken, (req, res) => {
   res.json({ msg: 'Acesso autorizado', usuario: req.usuario });
 });
