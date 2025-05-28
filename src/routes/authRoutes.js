@@ -14,34 +14,51 @@ router.get('/', (req, res) => {
   res.send('Rota de autenticação funcionando!');
 });
 
-// Registro de usuário
 router.post('/register', async (req, res) => {
-  const { nome, email, senha, role } = req.body;
+  const { emailOrUsername, senha, role } = req.body;
 
-  if (!nome || !email || !senha) {
-    return res.status(400).json({ msg: 'Nome, e-mail e senha são obrigatórios' });
+  if (!emailOrUsername || !senha) {
+    return res.status(400).json({ msg: 'Email ou nome de usuário e senha são obrigatórios' });
   }
 
   try {
-    const usuarioExistente = await Usuario.findOne({ email });
+    // Verifica se já existe um usuário com esse email ou nome
+    const usuarioExistente = await Usuario.findOne({
+      $or: [{ email: emailOrUsername }, { nome: emailOrUsername }]
+    });
+
     if (usuarioExistente) {
-      return res.status(400).json({ msg: 'Usuário já existe' });
+      return res.status(400).json({ msg: 'Já existe um usuário com este e-mail ou nome de usuário' });
     }
 
     const salt = await bcrypt.genSalt(10);
     const senhaHash = await bcrypt.hash(senha, salt);
 
-    const novoUsuario = new Usuario({ nome, email, senha: senhaHash, role: role || 'cliente' });
+    // Decide se o campo é email ou nome
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOrUsername);
+
+    const novoUsuario = new Usuario({
+      nome: isEmail ? undefined : emailOrUsername,
+      email: isEmail ? emailOrUsername : undefined,
+      senha: senhaHash,
+      role: role || 'cliente',
+    });
+
     await novoUsuario.save();
 
     res.status(201).json({
       msg: 'Usuário registrado com sucesso',
-      usuario: { nome: novoUsuario.nome, email: novoUsuario.email, role: novoUsuario.role },
+      usuario: {
+        nome: novoUsuario.nome,
+        email: novoUsuario.email,
+        role: novoUsuario.role
+      }
     });
   } catch (err) {
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
 });
+
 
 // Login
 router.post('/login', async (req, res) => {
