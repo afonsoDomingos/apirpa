@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const Usuario = require('../models/authModel');
 const verificarToken = require('../middleware/authMiddleware');
-
+console.log('Middleware:', verificarToken); // Deve mostrar a função
 
 
 
@@ -35,18 +35,17 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
 
+
+router.post('/login', async (req, res) => {
   const { email, senha } = req.body;
 
-// Tenta buscar por email ou username
-const usuario = await Usuario.findOne({
-  $or: [{ email }, { nome: email }]
-});
-
-
   try {
-    const usuario = await Usuario.findOne({ email });
+    // Permitir login com email ou nome
+    const usuario = await Usuario.findOne({
+      $or: [{ email }, { nome: email }]
+    });
+
     if (!usuario) return res.status(400).json({ msg: 'Usuário não encontrado' });
 
     const senhaValida = await bcrypt.compare(senha, usuario.senha);
@@ -71,6 +70,7 @@ const usuario = await Usuario.findOne({
   }
 });
 
+
 router.get('/usuarios', async (req, res) => {
   try {
     const { role } = req.query;
@@ -81,7 +81,6 @@ router.get('/usuarios', async (req, res) => {
     res.status(500).json({ msg: 'Erro ao buscar usuários', erro: err.message });
   }
 });
-
 
 // Atualizar usuário (somente o próprio usuário ou admin)
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
@@ -116,7 +115,6 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     res.status(500).json({ msg: 'Erro ao atualizar usuário', erro: err.message });
   }
 });
-
 
 // Deletar usuário (somente admin)
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {

@@ -1,9 +1,6 @@
-// middleware/authMiddleware.js
-
-const jwt = require('jsonwebtoken');
-
 const verificarToken = (req, res, next) => {
-  const token = req.header('x-auth-token');
+  const authHeader = req.header('Authorization');
+  const token = authHeader && authHeader.split(' ')[1]; // Pega o token após "Bearer "
 
   if (!token) {
     return res.status(401).json({ msg: 'Acesso negado. Sem token.' });
@@ -18,4 +15,4 @@ const verificarToken = (req, res, next) => {
   }
 };
 
-module.exports = verificarToken; // ✅ Agora está depois da definição
+module.exports = verificarToken;
