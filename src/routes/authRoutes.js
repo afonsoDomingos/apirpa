@@ -16,7 +16,7 @@ router.post('/register', async (req, res) => {
   try {
     const usuarioExistente = await Usuario.findOne({ email });
     if (usuarioExistente) {
-      return res.status(400).json({ msg: 'Usuário já existe' });
+      return res.status(400).json({ msg: 'Usuário já existeE' });
     }
 
     // Criptografa a senha antes de salvar
@@ -26,7 +26,7 @@ router.post('/register', async (req, res) => {
     const novoUsuario = new Usuario({ nome, email, senha: senhaHash, role: role || 'cliente' });
     await novoUsuario.save();
 
-    res.status(201).json({ msg: 'Usuário registrado com sucesso', usuario: { nome, email, role: novoUsuario.role } });
+    res.status(201).json({ msg: 'Usuário registrado com sucessoO', usuario: { nome, email, role: novoUsuario.role } });
   } catch (err) {
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
