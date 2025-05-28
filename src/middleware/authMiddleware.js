@@ -18,4 +18,4 @@ const verificarToken = (req, res, next) => {
   }
 };
 
-module.exports = verificarToken;
+module.exports = verificarToken; // ✅ Agora está depois da definição

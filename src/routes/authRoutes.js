@@ -4,6 +4,9 @@ const bcrypt = require('bcryptjs');
 const Usuario = require('../models/authModel');
 const verificarToken = require('../middleware/authMiddleware');
 
+
+
+
 const router = express.Router();
 
 router.get('/', (req, res) => {
@@ -79,6 +82,7 @@ router.get('/usuarios', async (req, res) => {
   }
 });
 
+
 // Atualizar usuário (somente o próprio usuário ou admin)
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
@@ -112,6 +116,7 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     res.status(500).json({ msg: 'Erro ao atualizar usuário', erro: err.message });
   }
 });
+
 
 // Deletar usuário (somente admin)
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {
