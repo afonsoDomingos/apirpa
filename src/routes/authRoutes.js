@@ -83,6 +83,7 @@ router.get('/usuarios', async (req, res) => {
 });
 
 // Atualizar usuário (somente o próprio usuário ou admin)
+//router.patch('/usuarios/:id', authMiddleware, async (req, res) =>
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
   const { nome, senha } = req.body;
@@ -117,7 +118,9 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
 });
 
 // Deletar usuário (somente admin)
-router.delete('/usuarios/:id', verificarToken, async (req, res) => {
+
+//router.delete('/usuarios/:id', authMiddleware, async (req, res) => 
+ router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
 
   if (req.usuario.role !== 'admin') {

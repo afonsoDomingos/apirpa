@@ -1,18 +1,16 @@
-const verificarToken = (req, res, next) => {
-  const authHeader = req.header('Authorization');
-  const token = authHeader && authHeader.split(' ')[1]; // Pega o token após "Bearer "
+const jwt = require('jsonwebtoken');
 
-  if (!token) {
-    return res.status(401).json({ msg: 'Acesso negado. Sem token.' });
-  }
+function verificarToken(req, res, next) {
+  const token = req.headers['authorization'];
+  if (!token) return res.status(401).json({ msg: 'Token ausente' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'seu_jwt_secret');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.usuario = decoded;
     next();
   } catch (err) {
-    res.status(400).json({ msg: 'Token inválido.' });
+    res.status(401).json({ msg: 'Token inválido' });
   }
-};
+}
 
 module.exports = verificarToken;
