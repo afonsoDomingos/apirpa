@@ -10,7 +10,7 @@ const authSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [false, 'O e-mail é obrigatório'],
+    required: [false, 'O e-mail nao é obrigatório'],
     unique: true,
     lowercase: true,
     trim: true,
