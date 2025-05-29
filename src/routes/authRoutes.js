@@ -122,15 +122,22 @@ router.get('/me', verificarToken, async (req, res) => {
   }
 });
 
-// Listar usuários
-router.get('/usuarios', async (req, res) => {
+// ✅ Rota protegida para listar todos os usuários
+router.get('/usuarios', verificarToken, async (req, res) => {
   try {
     const { role } = req.query;
-    const usuarios = await Usuario.find(role ? { role } : {});
-    const usuariosFiltrados = usuarios.map(({ _id, nome, email, role }) => ({
-      id: _id, nome, email, role
+
+    const filtro = role ? { role } : {};
+    const usuarios = await Usuario.find(filtro).select('-senha');
+
+    const usuariosFormatados = usuarios.map(({ _id, nome, email, role }) => ({
+      id: _id,
+      nome,
+      email,
+      role
     }));
-    res.json(usuariosFiltrados);
+
+    res.json(usuariosFormatados);
   } catch (err) {
     res.status(500).json({ msg: 'Erro ao buscar usuários', erro: err.message });
   }
