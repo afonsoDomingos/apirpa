@@ -15,14 +15,15 @@ router.get('/', (req, res) => {
 });
 
 router.post('/register', async (req, res) => {
-  const { emailOrUsername, senha, role } = req.body;
+  const { nome, emailOrUsername, senha, role } = req.body;
 
-  if (!emailOrUsername || !senha) {
-    return res.status(400).json({ msg: 'Email ou nome de usuário e senha são obrigatórios' });
+  // Verificar se nome, emailOrUsername e senha foram enviados
+  if (!nome || !emailOrUsername || !senha) {
+    return res.status(400).json({ msg: 'Nome, email ou nome de usuário e senha são obrigatórios' });
   }
 
   try {
-    // Verifica se já existe um usuário com esse email ou nome
+    // Verifica se já existe um usuário com esse e-mail ou nome de usuário
     const usuarioExistente = await Usuario.findOne({
       $or: [{ email: emailOrUsername }, { nome: emailOrUsername }]
     });
@@ -34,18 +35,18 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const senhaHash = await bcrypt.hash(senha, salt);
 
-    // Decide se o campo é email ou nome
+    // Verifica se é um e-mail ou nome de usuário e salva de forma adequada
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOrUsername);
-
     const novoUsuario = new Usuario({
-      nome: isEmail ? undefined : emailOrUsername,
-      email: isEmail ? emailOrUsername : undefined,
+      nome: isEmail ? nome : emailOrUsername,  // Se não for e-mail, o campo nome recebe emailOrUsername
+      email: isEmail ? emailOrUsername : undefined, // Se for e-mail, o campo email recebe emailOrUsername
       senha: senhaHash,
-      role: role || 'cliente',
+      role: role || 'cliente', // Definir 'cliente' como valor padrão se não for informado
     });
 
     await novoUsuario.save();
 
+    // Resposta após sucesso
     res.status(201).json({
       msg: 'Usuário registrado com sucesso',
       usuario: {
@@ -58,6 +59,7 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
 });
+
 
 
 // Login
