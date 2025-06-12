@@ -90,12 +90,6 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ msg: 'Senha incorreta' });
     }
 
-    // Gera token JWT
-    const token = jwt.sign(
-      { id: usuario._id, role: usuario.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
 
     // Decide redirect
     const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
@@ -211,5 +205,17 @@ router.delete('/usuarios/:id', verificarToken, async (req, res) => {
 router.get('/protegida', verificarToken, (req, res) => {
   res.json({ msg: 'Acesso autorizado', usuario: req.usuario });
 });
+
+
+  // Geração do Token
+const token = jwt.sign(
+  { id: usuario._id, role: usuario.role },
+  process.env.JWT_SECRET,
+  { expiresIn: '1h' }
+);
+
+console.log("Token gerado:", token);  // Log para checar se o token está sendo gerado corretamente
+
+
 
 module.exports = router;
