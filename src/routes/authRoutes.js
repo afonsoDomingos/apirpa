@@ -123,7 +123,7 @@ router.get('/me', verificarToken, async (req, res) => {
 });
 
 // ✅ Rota protegida para listar todos os usuários
-router.get('/usuarios', verificarToken, async (req, res) => {
+router.get('/usuarios', async (req, res) => {
   try {
     const { role } = req.query;
 
