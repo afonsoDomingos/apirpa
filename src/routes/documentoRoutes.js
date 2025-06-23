@@ -1,8 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const Documento = require('../models/documentoModel');
+
 // Teste de rota
 router.get('/', (req, res) => {
+  res.send('Api funcionando com MongoDB!');
+});
+
+// Teste de rota
+router.get('/doc', (req, res) => {
   res.send('Rota de documentos funcionando com MongoDB!');
 });
 
