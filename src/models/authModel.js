@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const authSchema = new mongoose.Schema({
   nome: {
     type: String,
-    required: [false, 'O nome é obrigatório'],
+    required: [true, 'O nome é obrigatório'],
     trim: true,
     minlength: [3, 'O nome deve ter pelo menos 3 caracteres']
   },
@@ -26,13 +26,11 @@ const authSchema = new mongoose.Schema({
     enum: ['admin', 'cliente'],
     default: 'cliente'
   }
-}, {
-  timestamps: true // Gera createdAt e updatedAt automaticamente
-});
+}, { timestamps: true });
 
 // Criptografar a senha antes de salvar
 authSchema.pre('save', async function (next) {
-  if (!this.isModified('senha')) return next(); // Só criptografa se for nova ou modificada
+  if (!this.isModified('senha')) return next(); // Só criptografa se senha for nova ou modificada
   this.senha = await bcrypt.hash(this.senha, 10);
   next();
 });
@@ -42,4 +40,6 @@ authSchema.methods.matchSenha = async function (senhaFornecida) {
   return await bcrypt.compare(senhaFornecida, this.senha);
 };
 
-module.exports = mongoose.model('Usuario', authSchema);
+const Usuario = mongoose.model('Usuario', authSchema);
+
+module.exports = Usuario;

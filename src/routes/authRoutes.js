@@ -14,39 +14,33 @@ router.get('/', (req, res) => {
   res.send('Rota de autenticação funcionando!');
 });
 
+// 👉 Registar novo utilizador (apenas com e-mail)
 router.post('/register', async (req, res) => {
-  const { nome, emailOrUsername, senha, role } = req.body;
+  const { nome, email, senha, role } = req.body;
 
-  // Verificar se nome, emailOrUsername e senha foram enviados
-  if (!nome || !emailOrUsername || !senha) {
-    return res.status(400).json({ msg: 'Nome, email ou nome de usuário e senha são obrigatórios' });
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ msg: 'Nome, e-mail e senha são obrigatórios' });
   }
 
   try {
-    // Verifica se já existe um usuário com esse e-mail ou nome de usuário
-    const usuarioExistente = await Usuario.findOne({
-      $or: [{ email: emailOrUsername }, { nome: emailOrUsername }]
-    });
+    const usuarioExistente = await Usuario.findOne({ email });
 
     if (usuarioExistente) {
-      return res.status(400).json({ msg: 'Já existe um usuário com este e-mail ou nome de usuário' });
+      return res.status(400).json({ msg: 'Já existe um usuário com este e-mail' });
     }
 
     const salt = await bcrypt.genSalt(10);
     const senhaHash = await bcrypt.hash(senha, salt);
 
-    // Verifica se é um e-mail ou nome de usuário e salva de forma adequada
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOrUsername);
     const novoUsuario = new Usuario({
-      nome: isEmail ? nome : emailOrUsername,  // Se não for e-mail, o campo nome recebe emailOrUsername
-      email: isEmail ? emailOrUsername : undefined, // Se for e-mail, o campo email recebe emailOrUsername
+      nome,
+      email,
       senha: senhaHash,
-      role: role || 'cliente', // Definir 'cliente' como valor padrão se não for informado
+      role: role || 'cliente',
     });
 
     await novoUsuario.save();
 
-    // Resposta após sucesso
     res.status(201).json({
       msg: 'Usuário registrado com sucesso',
       usuario: {
@@ -60,41 +54,34 @@ router.post('/register', async (req, res) => {
   }
 });
 
-
-
-// Login
+// 👉 Login com e-mail e senha
 router.post('/login', async (req, res) => {
-  const { emailOrUsername, senha } = req.body;
+  const { email, senha } = req.body;
 
-  // Validação de campos
-  if (!emailOrUsername || !senha) {
-    return res.status(400).json({ msg: 'Email ou nome e senha são obrigatórios' });
+  if (!email || !senha) {
+    return res.status(400).json({ msg: 'E-mail e senha são obrigatórios' });
   }
 
   try {
-    // Busca usuário pelo email ou nome
-    const usuario = await Usuario.findOne({
-      $or: [
-        { email: emailOrUsername },
-        { nome: emailOrUsername }
-      ]
-    });
+    const usuario = await Usuario.findOne({ email });
 
     if (!usuario) {
       return res.status(400).json({ msg: 'Usuário não encontrado' });
     }
 
-    // Verifica senha
     const senhaValida = await bcrypt.compare(senha, usuario.senha);
     if (!senhaValida) {
       return res.status(400).json({ msg: 'Senha incorreta' });
     }
 
+    const token = jwt.sign(
+      { id: usuario._id, role: usuario.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
 
-    // Decide redirect
     const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
 
-    // Retorna dados
     res.json({
       msg: 'Login bem-sucedido',
       token,
@@ -106,8 +93,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-
-// Rota para consultar dados do próprio usuário
+// Consulta do próprio usuário
 router.get('/me', verificarToken, async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.usuario.id).select('-senha');
@@ -118,11 +104,10 @@ router.get('/me', verificarToken, async (req, res) => {
   }
 });
 
-// ✅ Rota protegida para listar todos os usuários
+// Listar usuários
 router.get('/usuarios', async (req, res) => {
   try {
     const { role } = req.query;
-
     const filtro = role ? { role } : {};
     const usuarios = await Usuario.find(filtro).select('-senha');
 
@@ -183,7 +168,7 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   }
 });
 
-// Deletar usuário (somente admin)
+// Deletar usuário
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
 
@@ -205,17 +190,5 @@ router.delete('/usuarios/:id', verificarToken, async (req, res) => {
 router.get('/protegida', verificarToken, (req, res) => {
   res.json({ msg: 'Acesso autorizado', usuario: req.usuario });
 });
-
-
-  // Geração do Token
-const token = jwt.sign(
-  { id: usuario._id, role: usuario.role },
-  process.env.JWT_SECRET,
-  { expiresIn: '1h' }
-);
-
-console.log("Token gerado:", token);  // Log para checar se o token está sendo gerado corretamente
-
-
 
 module.exports = router;
