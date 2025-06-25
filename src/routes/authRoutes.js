@@ -99,6 +99,28 @@ router.post('/login', async (req, res) => {
   }
 });
 
+
+// Listar usuários
+router.get('/usuarios', async (req, res) => {
+  try {
+    const { role } = req.query;
+    const filtro = role ? { role } : {};
+    const usuarios = await Usuario.find(filtro).select('-senha');
+
+    const usuariosFormatados = usuarios.map(({ _id, nome, email, role }) => ({
+      id: _id,
+      nome,
+      email,
+      role
+    }));
+
+    res.json(usuariosFormatados);
+  } catch (err) {
+    res.status(500).json({ msg: 'Erro ao buscar usuários', erro: err.message });
+  }
+});
+
+
 // Atualizar usuário
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
@@ -182,6 +204,9 @@ router.delete('/usuarios/:id', verificarToken, async (req, res) => {
 });
 
 
-
+// Rota protegida de teste
+router.get('/protegida', verificarToken, (req, res) => {
+  res.json({ msg: 'Acesso autorizado', usuario: req.usuario });
+});
 
 module.exports = router;
