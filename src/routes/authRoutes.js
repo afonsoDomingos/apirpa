@@ -16,16 +16,6 @@ router.get('/', (req, res) => {
 
 // 👉 Registar novo utilizador (apenas com e-mail)
 router.post('/register', async (req, res) => {
-
-  console.log('Login tentado com:', email, senha);
-  console.log('Usuário encontrado:', usuario);
-  console.log('Resultado da comparação da senha:', senhaValida);
-  console.log('Senha recebida:', senha);
-  console.log('Hash gerado:', senhaHash);
-
- 
-
-
   const { nome, email, senha, role } = req.body;
 
   if (!nome || !email || !senha) {
@@ -41,6 +31,9 @@ router.post('/register', async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const senhaHash = await bcrypt.hash(senha, salt);
+
+    console.log('Senha recebida:', senha);
+    console.log('Hash gerado:', senhaHash);
 
     const novoUsuario = new Usuario({
       nome,
@@ -60,6 +53,7 @@ router.post('/register', async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('Erro no registro:', err);
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
 });
