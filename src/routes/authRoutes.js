@@ -16,8 +16,15 @@ router.get('/', (req, res) => {
 
 // 👉 Registar novo utilizador (apenas com e-mail)
 router.post('/register', async (req, res) => {
+
+  console.log('Login tentado com:', email, senha);
+  console.log('Usuário encontrado:', usuario);
+  console.log('Resultado da comparação da senha:', senhaValida);
   console.log('Senha recebida:', senha);
   console.log('Hash gerado:', senhaHash);
+
+ 
+
 
   const { nome, email, senha, role } = req.body;
 
