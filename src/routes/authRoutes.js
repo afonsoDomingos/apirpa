@@ -58,22 +58,29 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, senha } = req.body;
 
+  console.log('Login recebido:', { email, senha });
+
   if (!email || !senha) {
     return res.status(400).json({ msg: 'E-mail e senha são obrigatórios' });
   }
 
   try {
     const usuario = await Usuario.findOne({ email });
+    console.log('Usuário encontrado:', usuario);
 
     if (!usuario) {
       return res.status(400).json({ msg: 'Usuário não encontrado' });
     }
 
+    // Teste direto bcrypt.compare
     const senhaValida = await bcrypt.compare(senha, usuario.senha);
+    console.log('Resultado bcrypt.compare:', senhaValida);
+
     if (!senhaValida) {
       return res.status(400).json({ msg: 'Senha incorreta' });
     }
 
+    // Resto do login...
     const token = jwt.sign(
       { id: usuario._id, role: usuario.role },
       process.env.JWT_SECRET,
@@ -89,6 +96,7 @@ router.post('/login', async (req, res) => {
       redirectUrl,
     });
   } catch (err) {
+    console.error('Erro no login:', err);
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
 });
