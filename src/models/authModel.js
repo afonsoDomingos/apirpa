@@ -28,14 +28,14 @@ const authSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Criptografar a senha antes de salvar
+// Middleware para criptografar a senha automaticamente antes de salvar
 authSchema.pre('save', async function (next) {
-  if (!this.isModified('senha')) return next(); // Só criptografa se senha for nova ou modificada
+  if (!this.isModified('senha')) return next();
   this.senha = await bcrypt.hash(this.senha, 10);
   next();
 });
 
-// Método para comparar a senha fornecida com a armazenada
+// Método para comparar senha
 authSchema.methods.matchSenha = async function (senhaFornecida) {
   return await bcrypt.compare(senhaFornecida, this.senha);
 };
