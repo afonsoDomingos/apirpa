@@ -56,6 +56,7 @@ router.post('/register', async (req, res) => {
 
 // 👉 Login com e-mail e senha
 router.post('/login', async (req, res) => {
+  console.log('Login request body:', req.body);
   const { email, senha } = req.body;
 
   console.log('Login tentado com:', email, senha);
@@ -71,7 +72,8 @@ router.post('/login', async (req, res) => {
     if (!usuario) {
       return res.status(400).json({ msg: 'Usuário não encontrado' });
     }
-
+     console.log('Senha enviada:', senha);
+     console.log('Hash armazenado:', usuario.senha);
     const senhaValida = await bcrypt.compare(senha, usuario.senha);
     console.log('Resultado da comparação da senha:', senhaValida);
 
