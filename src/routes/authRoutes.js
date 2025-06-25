@@ -11,6 +11,9 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   const { nome, email, senha, role } = req.body;
 
+  console.log('📥 Registro recebido:', { nome, email, role });
+  console.log('Senha recebida:', senha);
+
   if (!nome || !email || !senha) {
     return res.status(400).json({ msg: 'Nome, e-mail e senha são obrigatórios' });
   }
@@ -18,6 +21,7 @@ router.post('/register', async (req, res) => {
   try {
     const usuarioExistente = await Usuario.findOne({ email });
     if (usuarioExistente) {
+      console.log('❌ Usuário já existe:', email);
       return res.status(400).json({ msg: 'Já existe um usuário com este e-mail' });
     }
 
@@ -29,6 +33,8 @@ router.post('/register', async (req, res) => {
     });
 
     await novoUsuario.save();
+
+    console.log('✅ Novo usuário salvo:', novoUsuario);
 
     res.status(201).json({
       msg: 'Usuário registrado com sucesso',
@@ -48,6 +54,9 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, senha } = req.body;
 
+  console.log('🔐 Tentativa de login:', email);
+  console.log('Senha recebida:', senha);
+
   if (!email || !senha) {
     return res.status(400).json({ msg: 'E-mail e senha são obrigatórios' });
   }
@@ -55,11 +64,16 @@ router.post('/login', async (req, res) => {
   try {
     const usuario = await Usuario.findOne({ email });
     if (!usuario) {
+      console.log('❌ Usuário não encontrado:', email);
       return res.status(400).json({ msg: 'Usuário não encontrado' });
     }
 
     const senhaValida = await usuario.matchSenha(senha.trim());
+
+    console.log('Senha válida?', senhaValida);
+
     if (!senhaValida) {
+      console.log('❌ Senha incorreta para o usuário:', email);
       return res.status(400).json({ msg: 'Senha incorreta' });
     }
 
@@ -70,6 +84,8 @@ router.post('/login', async (req, res) => {
     );
 
     const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
+
+    console.log('✅ Login bem-sucedido:', { id: usuario._id, role: usuario.role });
 
     res.json({
       msg: 'Login bem-sucedido',
@@ -83,53 +99,16 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Consulta do próprio usuário
-router.get('/me', verificarToken, async (req, res) => {
-  try {
-    const usuario = await Usuario.findById(req.usuario.id).select('-senha');
-    if (!usuario) return res.status(404).json({ msg: 'Usuário não encontrado' });
-
-    res.json({
-      id: usuario._id,
-      nome: usuario.nome,
-      email: usuario.email,
-      role: usuario.role
-    });
-  } catch (err) {
-    res.status(500).json({ msg: 'Erro ao buscar dados', erro: err.message });
-  }
-});
-
-// Listar usuários (somente admin)
-router.get('/usuarios', verificarToken, async (req, res) => {
-  if (req.usuario.role !== 'admin') {
-    return res.status(403).json({ msg: 'Acesso negado' });
-  }
-
-  try {
-    const { role } = req.query;
-    const filtro = role ? { role } : {};
-    const usuarios = await Usuario.find(filtro).select('-senha');
-
-    const usuariosFormatados = usuarios.map(({ _id, nome, email, role }) => ({
-      id: _id,
-      nome,
-      email,
-      role
-    }));
-
-    res.json(usuariosFormatados);
-  } catch (err) {
-    res.status(500).json({ msg: 'Erro ao buscar usuários', erro: err.message });
-  }
-});
-
 // Atualizar usuário
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
   const { nome, senha, email, role } = req.body;
 
+  console.log('✏️ Atualização de usuário:', id);
+  console.log('Dados recebidos para atualização:', { nome, email, role });
+
   if (req.usuario.id !== id && req.usuario.role !== 'admin') {
+    console.log('❌ Acesso negado para edição por:', req.usuario);
     return res.status(403).json({ msg: 'Acesso negado' });
   }
 
@@ -138,11 +117,15 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     if (nome) updateData.nome = nome;
     if (senha) {
       const salt = await bcrypt.genSalt(10);
-      updateData.senha = await bcrypt.hash(senha, salt);
+      const senhaHash = await bcrypt.hash(senha, salt);
+      console.log('Senha recebida:', senha);
+      console.log('Hash gerado:', senhaHash);
+      updateData.senha = senhaHash;
     }
     if (email) {
       const emailExistente = await Usuario.findOne({ email });
       if (emailExistente && emailExistente._id.toString() !== id) {
+        console.log('❌ E-mail já em uso:', email);
         return res.status(400).json({ msg: 'E-mail já em uso' });
       }
       updateData.email = email;
@@ -154,6 +137,8 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     const usuarioAtualizado = await Usuario.findByIdAndUpdate(id, updateData, { new: true });
     if (!usuarioAtualizado) return res.status(404).json({ msg: 'Usuário não encontrado' });
 
+    console.log('✅ Usuário atualizado:', usuarioAtualizado);
+
     res.json({
       msg: 'Usuário atualizado',
       usuario: {
@@ -164,26 +149,39 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('Erro ao atualizar usuário:', err);
     res.status(500).json({ msg: 'Erro ao atualizar usuário', erro: err.message });
   }
 });
 
-// Deletar usuário (somente admin)
+// Deletar usuário
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
 
+  console.log('🗑️ Requisição de remoção de usuário:', id);
+
   if (req.usuario.role !== 'admin') {
+    console.log('❌ Acesso negado para deletar por:', req.usuario.role);
     return res.status(403).json({ msg: 'Acesso negado' });
   }
 
   try {
     const usuarioRemovido = await Usuario.findByIdAndDelete(id);
-    if (!usuarioRemovido) return res.status(404).json({ msg: 'Usuário não encontrado' });
+    if (!usuarioRemovido) {
+      console.log('❌ Usuário não encontrado para deletar:', id);
+      return res.status(404).json({ msg: 'Usuário não encontrado' });
+    }
+
+    console.log('✅ Usuário removido com sucesso:', usuarioRemovido.email);
 
     res.json({ msg: 'Usuário removido com sucesso' });
   } catch (err) {
+    console.error('Erro ao remover usuário:', err);
     res.status(500).json({ msg: 'Erro ao remover usuário', erro: err.message });
   }
 });
+
+
+
 
 module.exports = router;
