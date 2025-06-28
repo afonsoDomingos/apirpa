@@ -1,15 +1,12 @@
 const express = require("express");
 const router = express.Router();
-const Pagamento = require('../models/pagamentoModel');
+const Pagamento = require("../models/pagamentoModel");
+const verificarToken = require("../middleware/authMiddleware"); // middleware para autenticar
 
-// Rota de teste simples
-router.get("/teste", (req, res) => {
-  res.json({ sucesso: true, mensagem: "API de pagamentos funcionando normalmente!" });
-});
-
-// POST - Criar um pagamento
-router.post("/", async (req, res) => {
+// Criar um pagamento (requer login)
+router.post("/", verificarToken, async (req, res) => {
   const { pacote, formaPagamento, preco, telefone, dadosCartao } = req.body;
+  const usuarioId = req.usuario.id; // vindo do middleware
 
   if (!pacote || !formaPagamento || preco === undefined || preco === null) {
     return res.status(400).json({
@@ -40,6 +37,7 @@ router.post("/", async (req, res) => {
       telefone: telefone || null,
       cartao: dadosCartao || null,
       data: new Date(),
+      usuario: usuarioId, // vincula pagamento ao usuário
     });
 
     const pagamentoSalvo = await novoPagamento.save();
@@ -60,31 +58,20 @@ router.post("/", async (req, res) => {
   }
 });
 
-// GET - Listar pagamentos com filtro opcional e paginação
-router.get("/", async (req, res) => {
-  const { pacote, formaPagamento, pagina = 1, limite = 10 } = req.query;
-  const filtro = {};
-  if (pacote) filtro.pacote = pacote;
-  if (formaPagamento) filtro.formaPagamento = formaPagamento;
-
-  const skip = (pagina - 1) * limite;
-
+// Listar pagamentos do usuário logado
+router.get("/meus", verificarToken, async (req, res) => {
   try {
-    const total = await Pagamento.countDocuments(filtro);
-    const pagamentos = await Pagamento.find(filtro)
-      .sort({ data: -1 })
-      .skip(parseInt(skip))
-      .limit(parseInt(limite));
+    const usuarioId = req.usuario.id;
+
+    const pagamentos = await Pagamento.find({ usuario: usuarioId }).sort({ data: -1 });
 
     res.json({
       sucesso: true,
-      pagina: parseInt(pagina),
-      limite: parseInt(limite),
-      total,
+      total: pagamentos.length,
       pagamentos,
     });
   } catch (error) {
-    console.error("Erro ao buscar pagamentos:", error);
+    console.error("Erro ao buscar pagamentos do usuário:", error);
     res.status(500).json({
       sucesso: false,
       mensagem: "Erro ao buscar pagamentos.",
@@ -92,13 +79,19 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET - Buscar pagamento por ID
-router.get("/:id", async (req, res) => {
+// Buscar pagamento por ID (só se for dono ou admin)
+router.get("/:id", verificarToken, async (req, res) => {
   try {
     const pagamento = await Pagamento.findById(req.params.id);
     if (!pagamento) {
       return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
     }
+
+    // Verifica se o pagamento pertence ao usuário ou se ele é admin (assumindo que req.usuario.role existe)
+    if (pagamento.usuario.toString() !== req.usuario.id && req.usuario.role !== "admin") {
+      return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
+    }
+
     res.json({ sucesso: true, pagamento });
   } catch (error) {
     console.error("Erro ao buscar pagamento:", error);
@@ -106,22 +99,12 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// PUT - Atualizar pagamento por ID
-router.put("/:id", async (req, res) => {
-  try {
-    const pagamentoAtualizado = await Pagamento.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!pagamentoAtualizado) {
-      return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
-    }
-    res.json({ sucesso: true, pagamento: pagamentoAtualizado });
-  } catch (error) {
-    console.error("Erro ao atualizar pagamento:", error);
-    res.status(500).json({ sucesso: false, mensagem: "Erro ao atualizar pagamento." });
+// (Opcional) Excluir pagamento - só admin
+router.delete("/:id", verificarToken, async (req, res) => {
+  if (req.usuario.role !== "admin") {
+    return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
   }
-});
 
-// DELETE - Deletar pagamento por ID
-router.delete("/:id", async (req, res) => {
   try {
     const pagamentoRemovido = await Pagamento.findByIdAndDelete(req.params.id);
     if (!pagamentoRemovido) {
