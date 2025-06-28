@@ -9,6 +9,7 @@ const documentoRoutes = require('./routes/documentoRoutes.js');
 const authRoutes = require('./routes/authRoutes.js');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
 const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes.js');
+const pagamentoRoutes = require("./routes/pagamentoRoutes");
 
 
 
@@ -48,6 +49,7 @@ app.use('/api', documentoRoutes);
 app.use('/api/auth', authRoutes); // Usar o prefixo '/api/auth' para as rotas de autenticação
 app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
+app.use("/api/pagamentos", pagamentoRoutes);
 
 // Rota para contar documentos Achados
 app.get('/api/documentos/count', (req, res) => {
