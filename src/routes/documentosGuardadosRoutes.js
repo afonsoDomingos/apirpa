@@ -68,15 +68,16 @@ router.post('/', verificarToken, async (req, res) => {
 // PUT: Atualizar documento por ID (sem validação de dono por enquanto)
 router.put('/:id', verificarToken, async (req, res) => {
   try {
-    const documentoAtualizado = await DocumentosGuardadosModel.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-
-    if (!documentoAtualizado) {
+    const documento = await DocumentosGuardadosModel.findById(req.params.id);
+    if (!documento) {
       return res.status(404).json({ success: false, message: 'Documento não encontrado.' });
     }
+    if (documento.usuarioId.toString() !== req.usuario.id) {
+      return res.status(403).json({ success: false, message: 'Sem permissão para atualizar este documento.' });
+    }
+
+    Object.assign(documento, req.body);
+    const documentoAtualizado = await documento.save();
 
     res.json({ success: true, message: 'Documento atualizado com sucesso.', data: documentoAtualizado });
   } catch (err) {
@@ -84,17 +85,24 @@ router.put('/:id', verificarToken, async (req, res) => {
   }
 });
 
+
 // DELETE: Remover documento por ID
 router.delete('/:id', verificarToken, async (req, res) => {
   try {
-    const documento = await DocumentosGuardadosModel.findByIdAndDelete(req.params.id);
+    const documento = await DocumentosGuardadosModel.findById(req.params.id);
     if (!documento) {
       return res.status(404).json({ success: false, message: 'Documento não encontrado.' });
     }
+    if (documento.usuarioId.toString() !== req.usuario.id) {
+      return res.status(403).json({ success: false, message: 'Sem permissão para remover este documento.' });
+    }
+
+    await documento.remove();
     res.json({ success: true, message: 'Documento removido com sucesso.' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Erro ao remover o documento.', error: err.message });
   }
 });
+
 
 module.exports = router;
