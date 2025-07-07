@@ -1,27 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const Documento = require('../models/documentoModel');
-const verificarToken = require('../middleware/authMiddleware'); // ✅
+const verificarToken = require('../middleware/authMiddleware');
 
+// Testes básicos
 router.get('/', (req, res) => {
-  res.send('Api funcionando com MongoDB!');
+  res.send('API funcionando com MongoDB!');
 });
-
 router.get('/doc', (req, res) => {
   res.send('Rota de documentos funcionando com MongoDB!');
 });
 
-// ✅ NOVA ROTA: Buscar documentos do usuário logado
+// Buscar documentos do usuário logado
 router.get('/documentos/meus', verificarToken, async (req, res) => {
   try {
-    const documentos = await Documento.find({ usuarioId: req.usuario.id });
+    const documentos = await Documento.find({ usuario: req.usuario.id });
     res.status(200).json(documentos);
   } catch (err) {
     res.status(500).json({ message: 'Erro ao buscar seus documentos.', error: err.message });
   }
 });
 
-// Buscar documentos com filtros (somente reportados)
+// Buscar documentos com filtros (reportados)
 router.get('/documentos', async (req, res) => {
   const { nome_completo, numero_documento, tipo_documento, provincia } = req.query;
   let filtro = { origem: 'reportado' };
@@ -42,7 +42,7 @@ router.get('/documentos', async (req, res) => {
   }
 });
 
-// Buscar apenas documentos reportados
+// Buscar reportados
 router.get('/documentos/reportados', async (req, res) => {
   try {
     const documentos = await Documento.find({ origem: 'reportado' });
@@ -52,7 +52,7 @@ router.get('/documentos/reportados', async (req, res) => {
   }
 });
 
-// Buscar apenas documentos de proprietários
+// Buscar proprietários
 router.get('/documentos/proprietarios', async (req, res) => {
   try {
     const documentos = await Documento.find({ origem: 'proprietario' });
@@ -62,7 +62,7 @@ router.get('/documentos/proprietarios', async (req, res) => {
   }
 });
 
-// Cadastrar novo documento
+// Criar novo documento
 router.post('/documentos', verificarToken, async (req, res) => {
   let { nome_completo, tipo_documento, numero_documento, provincia, data_perda, origem, contacto } = req.body;
 
@@ -86,11 +86,11 @@ router.post('/documentos', verificarToken, async (req, res) => {
       tipo_documento,
       numero_documento,
       provincia,
-      data_perda: new Date(data_perda).toISOString().split('T')[0],
+      data_perda: new Date(data_perda),
       origem,
       contacto,
       status: 'Pendente',
-      usuarioId: req.usuario.id // ✅ Associar ao usuário logado
+      usuario: req.usuario.id // ✅ corrigido para "usuario"
     });
 
     await novoDocumento.save();
@@ -110,16 +110,14 @@ router.put('/documentos/:id', verificarToken, async (req, res) => {
   }
 
   if (atualizacoes.data_perda) {
-    atualizacoes.data_perda = new Date(atualizacoes.data_perda).toISOString().split('T')[0];
+    atualizacoes.data_perda = new Date(atualizacoes.data_perda);
   }
 
   try {
     const documento = await Documento.findById(id);
-
     if (!documento) return res.status(404).json({ message: 'Documento não encontrado.' });
 
-    // ✅ Verifica se o usuário é o dono
-    if (documento.usuarioId !== req.usuario.id && req.usuario.role !== 'admin') {
+    if (documento.usuario.toString() !== req.usuario.id && req.usuario.role !== 'admin') {
       return res.status(403).json({ message: 'Acesso negado.' });
     }
 
@@ -130,7 +128,7 @@ router.put('/documentos/:id', verificarToken, async (req, res) => {
   }
 });
 
-// Atualizar status (admin somente)
+// Atualizar status (admin apenas)
 router.patch('/documentos/:id/status', verificarToken, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -145,28 +143,23 @@ router.patch('/documentos/:id/status', verificarToken, async (req, res) => {
 
   try {
     const documento = await Documento.findByIdAndUpdate(id, { status }, { new: true });
-    if (!documento) {
-      return res.status(404).json({ error: 'Documento não encontrado.' });
-    }
+    if (!documento) return res.status(404).json({ error: 'Documento não encontrado.' });
 
     res.json(documento);
   } catch (err) {
-    res.status(500).json({ error: 'Erro ao atualizar status.' });
+    res.status(500).json({ error: 'Erro ao atualizar status.', message: err.message });
   }
 });
 
-// Deletar documento por ID
+// Deletar documento
 router.delete('/documentos/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
 
   try {
     const documento = await Documento.findById(id);
-    if (!documento) {
-      return res.status(404).json({ message: 'Documento não encontrado.' });
-    }
+    if (!documento) return res.status(404).json({ message: 'Documento não encontrado.' });
 
-    // ✅ Só o dono ou admin pode apagar
-    if (documento.usuarioId !== req.usuario.id && req.usuario.role !== 'admin') {
+    if (documento.usuario.toString() !== req.usuario.id && req.usuario.role !== 'admin') {
       return res.status(403).json({ message: 'Você não tem permissão para apagar este documento.' });
     }
 
