@@ -21,6 +21,9 @@ router.get('/documentos/meus', verificarToken, async (req, res) => {
   }
 });
 
+
+
+
 // Buscar documentos com filtros (reportados)
 router.get('/documentos', async (req, res) => {
   const { nome_completo, numero_documento, tipo_documento, provincia } = req.query;
@@ -61,6 +64,8 @@ router.get('/documentos/proprietarios', async (req, res) => {
     res.status(500).json({ message: 'Erro ao buscar documentos de proprietários.', error: err.message });
   }
 });
+
+
 
 // Criar novo documento
 router.post('/documentos', verificarToken, async (req, res) => {

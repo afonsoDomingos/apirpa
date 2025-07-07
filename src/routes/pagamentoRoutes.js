@@ -117,4 +117,30 @@ router.delete("/:id", verificarToken, async (req, res) => {
   }
 });
 
+
+// Verificar se o usuário tem assinatura ativa (últimos 30 dias)
+router.get("/assinatura/ativa", verificarToken, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+
+    const pagamentoMaisRecente = await Pagamento.findOne({ usuario: usuarioId }).sort({ data: -1 });
+
+    if (!pagamentoMaisRecente) {
+      return res.json({ ativa: false });
+    }
+
+    const hoje = new Date();
+    const validade = new Date(pagamentoMaisRecente.data);
+    validade.setMonth(validade.getMonth() + 1); // Válido por 1 mês
+
+    const assinaturaAtiva = hoje <= validade;
+
+    return res.json({ ativa: assinaturaAtiva });
+  } catch (error) {
+    console.error("Erro ao verificar assinatura:", error);
+    res.status(500).json({ sucesso: false, mensagem: "Erro ao verificar assinatura." });
+  }
+});
+
+
 module.exports = router;
