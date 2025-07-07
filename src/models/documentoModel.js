@@ -3,16 +3,14 @@
 const mongoose = require('mongoose');
 
 const documentoSchema = new mongoose.Schema({
-  usuario: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
+  usuario: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true }, // ✅ Correto!
   nome_completo: { type: String, required: true, trim: true },
   tipo_documento: { type: String, required: true, trim: true },
   numero_documento: { type: String, required: true, trim: true },
   provincia: { type: String, required: true },
-  data_perda: { type: String, required: true }, // ou: type: Date
+  data_perda: { type: String, required: true },
   origem: { type: String, enum: ['proprietario', 'reportado'], required: true },
   contacto: { type: String, required: true, trim: true },
-
-  // Campo atualizado: status apenas com 'Pendente' ou 'Entregue'
   status: {
     type: String,
     enum: ['Pendente', 'Entregue'],
