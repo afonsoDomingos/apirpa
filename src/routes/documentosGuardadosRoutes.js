@@ -1,24 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const DocumentosGuardadosModel = require('../models/documentosGuardadosModel');
-const verificarToken = require('../middleware/authMiddleware'); // ✅ Importado
+const verificarToken = require('../middleware/authMiddleware'); 
 
 // Rota de teste
 router.get('/teste', (req, res) => {
   res.json({ success: true, message: 'API de documentos pessoais funcionando corretamente!' });
 });
 
-// 🔐 NOVA: Buscar documentos do usuário logado
+// Buscar documentos do usuário logado
 router.get('/meus-documentos', verificarToken, async (req, res) => {
   try {
-    const documentos = await DocumentosGuardadosModel.find({ usuarioId: req.usuario.id }).sort({ createdAt: -1 });
+    const documentos = await DocumentosGuardadosModel.find({ usuario: req.usuario.id }).sort({ createdAt: -1 });
     res.json(documentos);
   } catch (err) {
     res.status(500).json({ success: false, message: 'Erro ao buscar seus documentos.', error: err.message });
   }
 });
 
-// GET: Buscar todos os documentos (geral)
+// Buscar todos os documentos
 router.get('/', async (req, res) => {
   try {
     const documentos = await DocumentosGuardadosModel.find().sort({ createdAt: -1 });
@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET: Buscar documento por ID
+// Buscar documento por ID
 router.get('/:id', async (req, res) => {
   try {
     const documento = await DocumentosGuardadosModel.findById(req.params.id);
@@ -41,10 +41,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST: Criar novo documento
+// Criar novo documento
 router.post('/', verificarToken, async (req, res) => {
   try {
-    const { nome, tipoDocumento, numeroDocumento, provincia, contacto } = req.body;
+    const { nome, tipoDocumento, numeroDocumento } = req.body;
 
     if (!nome || !tipoDocumento || !numeroDocumento) {
       return res.status(400).json({
@@ -55,7 +55,7 @@ router.post('/', verificarToken, async (req, res) => {
 
     const novoDocumento = new DocumentosGuardadosModel({
       ...req.body,
-      usuarioId: req.usuario.id // ← vínculo com o usuário logado
+      usuario: req.usuario.id // corrigido para 'usuario'
     });
 
     await novoDocumento.save();
@@ -65,18 +65,31 @@ router.post('/', verificarToken, async (req, res) => {
   }
 });
 
-// PUT: Atualizar documento por ID (sem validação de dono por enquanto)
+// Atualizar documento por ID
 router.put('/:id', verificarToken, async (req, res) => {
   try {
     const documento = await DocumentosGuardadosModel.findById(req.params.id);
     if (!documento) {
       return res.status(404).json({ success: false, message: 'Documento não encontrado.' });
     }
-    if (documento.usuarioId.toString() !== req.usuario.id) {
+    if (documento.usuario.toString() !== req.usuario.id) {
       return res.status(403).json({ success: false, message: 'Sem permissão para atualizar este documento.' });
     }
 
-    Object.assign(documento, req.body);
+    // Atualizar somente campos permitidos
+    const camposPermitidos = [
+      'tipoDocumento', 'nome', 'numeroDocumento', 'dataEmissao', 'validade',
+      'categoria', 'matricula', 'seguradora', 'numeroConta', 'numeroCartao',
+      'zonaEleitoral', 'numeroSegurancaSocial', 'patente', 'modelo',
+      'entidadeEmissora', 'cartaoVirtualTipo', 'codigoVirtual'
+    ];
+
+    camposPermitidos.forEach(campo => {
+      if (req.body[campo] !== undefined) {
+        documento[campo] = req.body[campo];
+      }
+    });
+
     const documentoAtualizado = await documento.save();
 
     res.json({ success: true, message: 'Documento atualizado com sucesso.', data: documentoAtualizado });
@@ -85,15 +98,14 @@ router.put('/:id', verificarToken, async (req, res) => {
   }
 });
 
-
-// DELETE: Remover documento por ID
+// Deletar documento por ID
 router.delete('/:id', verificarToken, async (req, res) => {
   try {
     const documento = await DocumentosGuardadosModel.findById(req.params.id);
     if (!documento) {
       return res.status(404).json({ success: false, message: 'Documento não encontrado.' });
     }
-    if (documento.usuarioId.toString() !== req.usuario.id) {
+    if (documento.usuario.toString() !== req.usuario.id) {
       return res.status(403).json({ success: false, message: 'Sem permissão para remover este documento.' });
     }
 
@@ -103,6 +115,5 @@ router.delete('/:id', verificarToken, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao remover o documento.', error: err.message });
   }
 });
-
 
 module.exports = router;
