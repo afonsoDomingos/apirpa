@@ -1,24 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const SolicitacoesModel = require('../models/SolicitacoesModel');
+const verificarToken = require('../middleware/authMiddleware'); // IMPORTADO
 
 // Rota de Teste
 router.get('/solicitacao', (req, res) => {
   res.send('API de Solicitações funcionando');
 });
 
-// ✅ Esta rota deve vir primeiro (contagem de documentos)
+// Contagem de solicitações
 router.get('/solicitacoes/count', async (req, res) => {
   try {
-    const count = await SolicitacoesModel.countDocuments();  // Usar o modelo correto, no caso, SolicitacoesModel
+    const count = await SolicitacoesModel.countDocuments();
     res.json({ count });
   } catch (error) {
     res.status(500).json({ message: 'Erro ao contar solicitações', error: error.message });
   }
 });
 
-// Rota para solicitar documento (Create)
-router.post('/solicitacoes', async (req, res) => {
+// Criar nova solicitação (com usuarioId)
+router.post('/solicitacoes', verificarToken, async (req, res) => {
   const { 
     nome_completo, 
     contacto, 
@@ -30,63 +31,68 @@ router.post('/solicitacoes', async (req, res) => {
     numero_bi 
   } = req.body;
 
-  // Valida se todos os dados obrigatórios foram fornecidos
   if (!nome_completo || !contacto || !tipo_documento || !motivo || !data_nascimento) {
     return res.status(400).json({ message: 'Dados incompletos para solicitação.' });
   }
 
   try {
-    // Cria uma nova solicitação com todos os dados
     const novaSolicitacao = new SolicitacoesModel({
       nome_completo,
       contacto,
       tipo_documento,
       motivo,
-      afiliacao,       // Campo opcional
-      local_emissao,   // Campo opcional
-      data_nascimento, // Campo obrigatório
-      numero_bi        // Campo opcional
+      afiliacao,
+      local_emissao,
+      data_nascimento,
+      numero_bi,
+      usuarioId: req.usuario.id // ← Vínculo com usuário logado
     });
 
-    // Salva a solicitação no banco de dados
     await novaSolicitacao.save();
-
-    // Retorna uma resposta de sucesso
     res.status(201).json({ message: 'Solicitação registrada com sucesso.' });
   } catch (err) {
-    // Se houver erro ao salvar, retorna o erro
     res.status(500).json({ message: 'Erro ao registrar solicitação.', error: err.message });
   }
 });
 
-// Rota para buscar todas as solicitações (Read)
+// 🔐 Nova rota: listar apenas as solicitações do usuário logado
+router.get('/minhas-solicitacoes', verificarToken, async (req, res) => {
+  try {
+    const minhasSolicitacoes = await SolicitacoesModel.find({ usuarioId: req.usuario.id });
+    res.status(200).json(minhasSolicitacoes);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao buscar suas solicitações.', error: err.message });
+  }
+});
+
+// Buscar todas as solicitações
 router.get('/solicitacoes', async (req, res) => {
   try {
-    const solicitacoes = await SolicitacoesModel.find(); // Busca todas as solicitações
-    res.status(200).json(solicitacoes); // Retorna as solicitações em formato JSON
+    const solicitacoes = await SolicitacoesModel.find();
+    res.status(200).json(solicitacoes);
   } catch (err) {
     res.status(500).json({ message: 'Erro ao buscar solicitações.', error: err.message });
   }
 });
 
-// Rota para buscar uma solicitação específica por ID (Read)
+// Buscar uma solicitação por ID
 router.get('/solicitacoes/:id', async (req, res) => {
-  const { id } = req.params; // Obtém o ID da solicitação da URL
+  const { id } = req.params;
 
   try {
-    const solicitacao = await SolicitacoesModel.findById(id); // Busca a solicitação pelo ID
+    const solicitacao = await SolicitacoesModel.findById(id);
     if (!solicitacao) {
       return res.status(404).json({ message: 'Solicitação não encontrada.' });
     }
-    res.status(200).json(solicitacao); // Retorna a solicitação encontrada
+    res.status(200).json(solicitacao);
   } catch (err) {
     res.status(500).json({ message: 'Erro ao buscar solicitação.', error: err.message });
   }
 });
 
-// Rota para atualizar uma solicitação (Update)
+// Atualizar uma solicitação
 router.put('/solicitacoes/:id', async (req, res) => {
-  const { id } = req.params; // Obtém o ID da solicitação da URL
+  const { id } = req.params;
   const { 
     nome_completo, 
     contacto, 
@@ -98,13 +104,11 @@ router.put('/solicitacoes/:id', async (req, res) => {
     numero_bi 
   } = req.body;
 
-  // Valida se os dados obrigatórios estão presentes
   if (!nome_completo || !contacto || !tipo_documento || !motivo || !data_nascimento) {
     return res.status(400).json({ message: 'Dados incompletos para atualizar a solicitação.' });
   }
 
   try {
-    // Atualiza a solicitação pelo ID, incluindo todos os campos novos
     const solicitacaoAtualizada = await SolicitacoesModel.findByIdAndUpdate(
       id,
       {
@@ -112,12 +116,12 @@ router.put('/solicitacoes/:id', async (req, res) => {
         contacto,
         tipo_documento,
         motivo,
-        afiliacao,      // Campo opcional
-        local_emissao,  // Campo opcional
-        data_nascimento, // Campo obrigatório
-        numero_bi       // Campo opcional
+        afiliacao,
+        local_emissao,
+        data_nascimento,
+        numero_bi
       },
-      { new: true } // Retorna o objeto atualizado
+      { new: true }
     );
 
     if (!solicitacaoAtualizada) {

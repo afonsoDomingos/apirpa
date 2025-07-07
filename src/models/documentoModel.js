@@ -3,6 +3,7 @@
 const mongoose = require('mongoose');
 
 const documentoSchema = new mongoose.Schema({
+  usuario: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
   nome_completo: { type: String, required: true, trim: true },
   tipo_documento: { type: String, required: true, trim: true },
   numero_documento: { type: String, required: true, trim: true },

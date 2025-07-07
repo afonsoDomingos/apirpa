@@ -1,14 +1,24 @@
-// rotas/documentosGuardadosRoutes.js
 const express = require('express');
 const router = express.Router();
 const DocumentosGuardadosModel = require('../models/documentosGuardadosModel');
+const verificarToken = require('../middleware/authMiddleware'); // ✅ Importado
 
 // Rota de teste
 router.get('/teste', (req, res) => {
   res.json({ success: true, message: 'API de documentos pessoais funcionando corretamente!' });
 });
 
-// GET: Buscar todos os documentos
+// 🔐 NOVA: Buscar documentos do usuário logado
+router.get('/meus-documentos', verificarToken, async (req, res) => {
+  try {
+    const documentos = await DocumentosGuardadosModel.find({ usuarioId: req.usuario.id }).sort({ createdAt: -1 });
+    res.json(documentos);
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar seus documentos.', error: err.message });
+  }
+});
+
+// GET: Buscar todos os documentos (geral)
 router.get('/', async (req, res) => {
   try {
     const documentos = await DocumentosGuardadosModel.find().sort({ createdAt: -1 });
@@ -32,11 +42,10 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST: Criar novo documento
-router.post('/', async (req, res) => {
+router.post('/', verificarToken, async (req, res) => {
   try {
     const { nome, tipoDocumento, numeroDocumento, provincia, contacto } = req.body;
 
-    // Validação básica
     if (!nome || !tipoDocumento || !numeroDocumento) {
       return res.status(400).json({
         success: false,
@@ -44,7 +53,11 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const novoDocumento = new DocumentosGuardadosModel(req.body);
+    const novoDocumento = new DocumentosGuardadosModel({
+      ...req.body,
+      usuarioId: req.usuario.id // ← vínculo com o usuário logado
+    });
+
     await novoDocumento.save();
     res.status(201).json(novoDocumento);
   } catch (err) {
@@ -52,8 +65,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT: Atualizar documento por ID
-router.put('/:id', async (req, res) => {
+// PUT: Atualizar documento por ID (sem validação de dono por enquanto)
+router.put('/:id', verificarToken, async (req, res) => {
   try {
     const documentoAtualizado = await DocumentosGuardadosModel.findByIdAndUpdate(
       req.params.id,
@@ -71,9 +84,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-
 // DELETE: Remover documento por ID
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verificarToken, async (req, res) => {
   try {
     const documento = await DocumentosGuardadosModel.findByIdAndDelete(req.params.id);
     if (!documento) {

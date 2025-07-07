@@ -2,6 +2,7 @@
 const mongoose = require('mongoose');
 
 const DocumentoSchema = new mongoose.Schema({
+  usuario: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
   tipoDocumento: { type: String, required: true },
   nome: String,
   numeroDocumento: String,

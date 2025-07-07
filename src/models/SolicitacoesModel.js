@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 // Define o esquema para a solicitação
 const solicitacaoSchema = new mongoose.Schema({
+  usuario: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
   nome_completo: { type: String, required: true },
   contacto: { type: String, required: true },
   tipo_documento: { type: String, required: true },
