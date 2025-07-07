@@ -12,7 +12,7 @@ router.get('/doc', (req, res) => {
 });
 
 // ✅ NOVA ROTA: Buscar documentos do usuário logado
-router.get('/documentos/cadastradoscd', verificarToken, async (req, res) => {
+router.get('/documentos/meus', verificarToken, async (req, res) => {
   try {
     const documentos = await Documento.find({ usuarioId: req.usuario.id });
     res.status(200).json(documentos);
