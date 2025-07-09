@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
-const Documento = require('./models/documentoModel'); // importar modelo para contar documentos
+const Documento = require('./models/documentoModel'); // importar modelo para contar documentos'
 
 // importar rotas
 const documentoRoutes = require('./routes/documentoRoutes.js');

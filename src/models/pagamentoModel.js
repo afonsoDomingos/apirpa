@@ -15,4 +15,25 @@ const pagamentoSchema = new mongoose.Schema({
   data: { type: Date, default: Date.now },
 });
 
+// Virtual para calcular dias restantes para expirar (30 dias após data)
+pagamentoSchema.virtual('diasRestantes').get(function () {
+  const hoje = new Date();
+  const validade = new Date(this.data);
+  validade.setDate(validade.getDate() + 30);
+
+  const diffTime = validade - hoje;
+  const diffDias = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return diffDias;
+});
+
+// Virtual para indicar se expirou
+pagamentoSchema.virtual('expirado').get(function () {
+  return this.diasRestantes < 0;
+});
+
+// Incluir virtuais no JSON e objeto
+pagamentoSchema.set('toJSON', { virtuals: true });
+pagamentoSchema.set('toObject', { virtuals: true });
+
 module.exports = mongoose.model('Pagamento', pagamentoSchema);
