@@ -57,7 +57,7 @@ router.post("/", verificarToken, async (req, res) => {
   }
 });
 
-// Listar pagamentos do usuário logado com virtuais incluídos e status ajustado
+// Listar pagamentos do usuário logado com validade e status dinâmico
 router.get("/meus", verificarToken, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
@@ -65,18 +65,17 @@ router.get("/meus", verificarToken, async (req, res) => {
 
     const pagamentosComValidade = pagamentos.map(pag => {
       const validade = new Date(pag.data);
-      validade.setDate(validade.getDate() + 30); // 30 dias após data
-      const hoje = new Date();
+      const diasDeValidade = pag.pacote?.toLowerCase().includes("ano") ? 365 : 30;
+      validade.setDate(validade.getDate() + diasDeValidade);
 
-      let statusAtual = pag.status;
-      if (pag.status !== 'cancelado' && hoje > validade) {
-        statusAtual = 'expirado';
-      }
+      const hoje = new Date();
+      const expirado = hoje > validade;
+      const status = expirado ? 'expirado' : 'pago';
 
       return {
         ...pag._doc,
         validade,
-        status: statusAtual,
+        status
       };
     });
 
