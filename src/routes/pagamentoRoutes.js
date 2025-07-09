@@ -5,7 +5,7 @@ const verificarToken = require("../middleware/authMiddleware");
 
 // Criar um pagamento (requer login)
 router.post("/", verificarToken, async (req, res) => {
-  const { pacote, formaPagamento, preco, telefone, dadosCartao } = req.body;
+  const { pacote, formaPagamento, preco, telefone, dadosCartao, status } = req.body;
   const usuarioId = req.usuario.id;
 
   if (!pacote || !formaPagamento || preco === undefined || preco === null) {
@@ -36,6 +36,7 @@ router.post("/", verificarToken, async (req, res) => {
       preco,
       telefone: telefone || null,
       cartao: dadosCartao || null,
+      status: status || 'pago',
       data: new Date(),
       usuario: usuarioId,
     });
@@ -56,19 +57,33 @@ router.post("/", verificarToken, async (req, res) => {
   }
 });
 
-// Listar pagamentos do usuário logado com virtuais incluídos
+// Listar pagamentos do usuário logado com virtuais incluídos e status ajustado
 router.get("/meus", verificarToken, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
     const pagamentos = await Pagamento.find({ usuario: usuarioId }).sort({ data: -1 });
 
-    // Não precisa calcular manualmente, virtuais já vêm com toObject()
-    const pagamentosComVirtuais = pagamentos.map((p) => p.toObject());
+    const pagamentosComValidade = pagamentos.map(pag => {
+      const validade = new Date(pag.data);
+      validade.setDate(validade.getDate() + 30); // 30 dias após data
+      const hoje = new Date();
+
+      let statusAtual = pag.status;
+      if (pag.status !== 'cancelado' && hoje > validade) {
+        statusAtual = 'expirado';
+      }
+
+      return {
+        ...pag._doc,
+        validade,
+        status: statusAtual,
+      };
+    });
 
     res.json({
       sucesso: true,
-      total: pagamentosComVirtuais.length,
-      pagamentos: pagamentosComVirtuais,
+      total: pagamentos.length,
+      pagamentos: pagamentosComValidade,
     });
   } catch (error) {
     console.error("Erro ao buscar pagamentos do usuário:", error);

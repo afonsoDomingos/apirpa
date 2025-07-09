@@ -12,6 +12,11 @@ const pagamentoSchema = new mongoose.Schema({
     validade: String,
     cvv: String,
   },
+  status: {
+    type: String,
+    enum: ['pago', 'pendente', 'cancelado', 'expirado'],
+    default: 'pago'
+  },
   data: { type: Date, default: Date.now },
 });
 
