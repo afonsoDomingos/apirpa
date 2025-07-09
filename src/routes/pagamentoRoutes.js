@@ -63,18 +63,24 @@ router.get("/meus", verificarToken, async (req, res) => {
     const usuarioId = req.usuario.id;
     const pagamentos = await Pagamento.find({ usuario: usuarioId }).sort({ data: -1 });
 
+    const hoje = new Date();
+
     const pagamentosComValidade = pagamentos.map(pag => {
       const validade = new Date(pag.data);
-      const diasDeValidade = pag.pacote?.toLowerCase().includes("ano") ? 365 : 30;
+      const nomePacote = pag.pacote?.toLowerCase().trim();
+      const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+
       validade.setDate(validade.getDate() + diasDeValidade);
 
-      const hoje = new Date();
-      const expirado = hoje > validade;
+      const diffMs = validade - hoje;
+      const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      const expirado = diasRestantes < 0;
       const status = expirado ? 'expirado' : 'pago';
 
       return {
         ...pag._doc,
         validade,
+        diasRestantes,
         status
       };
     });
@@ -130,7 +136,7 @@ router.delete("/:id", verificarToken, async (req, res) => {
   }
 });
 
-// Verificar assinatura ativa (últimos 30 dias)
+// Verificar assinatura ativa
 router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
@@ -141,7 +147,15 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
       return res.json({ ativa: false, diasRestantes: null });
     }
 
-    const diasRestantes = pagamentoMaisRecente.diasRestantes;
+    const nomePacote = pagamentoMaisRecente.pacote?.toLowerCase().trim();
+    const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+
+    const validade = new Date(pagamentoMaisRecente.data);
+    validade.setDate(validade.getDate() + diasDeValidade);
+
+    const hoje = new Date();
+    const diffMs = validade - hoje;
+    const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
     const assinaturaAtiva = diasRestantes >= 0;
 
     return res.json({ ativa: assinaturaAtiva, diasRestantes });
