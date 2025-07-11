@@ -9,6 +9,7 @@ const { iniciarC2B } = require("../services/mpesaService");
 // Rota callback da M-Pesa (sem autenticação)
 router.post("/mpesa/callback", mpesaCallbackHandler);
 
+
 // Criar um pagamento (requer login)
 router.post("/", verificarToken, async (req, res) => {
   const { pacote, formaPagamento, preco, telefone, dadosCartao, status } = req.body;
@@ -34,8 +35,19 @@ router.post("/", verificarToken, async (req, res) => {
 
     if (formaPagamento === "M-Pesa") {
       const ref = `USER${usuarioId}-${Date.now()}`;
+      
+      // Adicionando log da resposta da API M-Pesa
       const resposta = await iniciarC2B({ amount: preco, msisdn: telefone, ref });
-      console.log('Resposta da API M-Pesa:', resposta); // Adicionando um log da resposta
+
+      // Log da resposta
+      console.log("Resposta da API M-Pesa:", resposta);
+
+      if (!resposta || !resposta.data) {
+        return res.status(500).json({
+          sucesso: false,
+          mensagem: "Erro ao iniciar pagamento M-Pesa: resposta inválida.",
+        });
+      }
 
       mpesaInfo = {
         transactionId: resposta.output_TransactionID,
