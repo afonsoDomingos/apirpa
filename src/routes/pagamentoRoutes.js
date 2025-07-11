@@ -35,6 +35,7 @@ router.post("/", verificarToken, async (req, res) => {
     if (formaPagamento === "M-Pesa") {
       const ref = `USER${usuarioId}-${Date.now()}`;
       const resposta = await iniciarC2B({ amount: preco, msisdn: telefone, ref });
+      console.log('Resposta da API M-Pesa:', resposta); // Adicionando um log da resposta
 
       mpesaInfo = {
         transactionId: resposta.output_TransactionID,
