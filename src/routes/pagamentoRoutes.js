@@ -3,7 +3,13 @@ const router = express.Router();
 const Pagamento = require("../models/pagamentoModel");
 const verificarToken = require("../middleware/authMiddleware");
 
-// Criar um pagamento (requer login)
+const { mpesaCallbackHandler } = require("../controllers/mpesaCallbackController");
+
+router.post("/mpesa/callback", mpesaCallbackHandler);
+
+
+const { iniciarC2B } = require("../services/mpesaService");
+// Criar um pagamento (requer login) Mpesa
 router.post("/", verificarToken, async (req, res) => {
   const { pacote, formaPagamento, preco, telefone, dadosCartao, status } = req.body;
   const usuarioId = req.usuario.id;
@@ -11,51 +17,58 @@ router.post("/", verificarToken, async (req, res) => {
   if (!pacote || !formaPagamento || preco === undefined || preco === null) {
     return res.status(400).json({
       sucesso: false,
-      mensagem: "Dados incompletos. Pacote, forma de pagamento e preço são obrigatórios.",
+      mensagem: "Pacote, forma de pagamento e preço são obrigatórios.",
     });
   }
 
   if (formaPagamento === "Cartão" && !dadosCartao?.numero) {
-    return res.status(400).json({
-      sucesso: false,
-      mensagem: "Dados do cartão ausentes.",
-    });
+    return res.status(400).json({ sucesso: false, mensagem: "Dados do cartão ausentes." });
   }
 
   if ((formaPagamento === "M-Pesa" || formaPagamento === "Emola") && !telefone) {
-    return res.status(400).json({
-      sucesso: false,
-      mensagem: "Número de telefone ausente.",
-    });
+    return res.status(400).json({ sucesso: false, mensagem: "Telefone ausente." });
   }
 
   try {
+    let mpesaInfo = null;
+
+    if (formaPagamento === "M-Pesa") {
+      const ref = `USER${usuarioId}-${Date.now()}`;
+      const resposta = await iniciarC2B({ amount: preco, msisdn: telefone, ref });
+
+      mpesaInfo = {
+        conversationId: resposta.output_ConversationID,
+        transactionId: resposta.output_TransactionID,
+        thirdPartyRef: resposta.output_ThirdPartyReference,
+      };
+    }
+
     const novoPagamento = new Pagamento({
       pacote,
       formaPagamento,
       preco,
       telefone: telefone || null,
       cartao: dadosCartao || null,
-      status: status || 'pago',
+      status: formaPagamento === "M-Pesa" ? "pendente" : status || "pago",
       data: new Date(),
       usuario: usuarioId,
+      mpesa: mpesaInfo,
     });
 
     const pagamentoSalvo = await novoPagamento.save();
 
     return res.json({
       sucesso: true,
-      mensagem: `Pagamento do pacote ${pacote} via ${formaPagamento} recebido com sucesso.`,
+      mensagem: "Pagamento iniciado.",
       pagamento: pagamentoSalvo,
     });
   } catch (error) {
-    console.error("Erro ao salvar pagamento:", error);
-    return res.status(500).json({
-      sucesso: false,
-      mensagem: "Erro interno ao processar pagamento.",
-    });
+    console.error("Erro ao processar pagamento:", error);
+    return res.status(500).json({ sucesso: false, mensagem: "Erro interno." });
   }
 });
+
+
 
 // Listar pagamentos do usuário logado com validade e status dinâmico
 router.get("/meus", verificarToken, async (req, res) => {

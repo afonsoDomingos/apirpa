@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const app = express();
 const cors = require('cors');
 const connectDB = require('./config/db');
 const Documento = require('./models/documentoModel'); // importar modelo para contar documentos'
@@ -10,9 +11,27 @@ const authRoutes = require('./routes/authRoutes.js');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
 const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes.js');
 const pagamentoRoutes = require("./routes/pagamentoRoutes");
+const { mpesaCallbackHandler } = require("./controllers/mpesaCallbackController");
 
-const app = express();
 const port = process.env.PORT || 5000;
+
+
+
+
+
+
+// Callback da M-Pesa com corpo bruto (antes do express.json())
+app.post(
+  "/api/pagamentos/mpesa/callback",
+  express.raw({ type: "*/*" }),
+  mpesaCallbackHandler
+);
+
+
+
+
+// Middleware JSON para o restante da API
+app.use(express.json());
 
 // CORS
 const allowedOrigins = ['https://recuperaaqui.vercel.app', 'http://localhost:3000'];

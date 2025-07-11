@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
 const pagamentoSchema = new mongoose.Schema({
+  
+  mpesa: {
+  conversationId: String,
+  transactionId: String,
+  thirdPartyRef: String,
+  raw: mongoose.Schema.Types.Mixed,
+},
   usuario: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
   pacote: { type: String, required: true },
   formaPagamento: { type: String, required: true },
