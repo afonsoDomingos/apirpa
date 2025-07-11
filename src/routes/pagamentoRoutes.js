@@ -4,12 +4,12 @@ const Pagamento = require("../models/pagamentoModel");
 const verificarToken = require("../middleware/authMiddleware");
 
 const { mpesaCallbackHandler } = require("../controllers/mpesaCallbackController");
+const { iniciarC2B } = require("../services/mpesaService");
 
+// Rota callback da M-Pesa (sem autenticação)
 router.post("/mpesa/callback", mpesaCallbackHandler);
 
-
-const { iniciarC2B } = require("../services/mpesaService");
-// Criar um pagamento (requer login) Mpesa
+// Criar um pagamento (requer login)
 router.post("/", verificarToken, async (req, res) => {
   const { pacote, formaPagamento, preco, telefone, dadosCartao, status } = req.body;
   const usuarioId = req.usuario.id;
@@ -37,9 +37,10 @@ router.post("/", verificarToken, async (req, res) => {
       const resposta = await iniciarC2B({ amount: preco, msisdn: telefone, ref });
 
       mpesaInfo = {
-        conversationId: resposta.output_ConversationID,
         transactionId: resposta.output_TransactionID,
+        conversationId: resposta.output_ConversationID,
         thirdPartyRef: resposta.output_ThirdPartyReference,
+        raw: resposta, // opcional para auditoria
       };
     }
 
@@ -67,8 +68,6 @@ router.post("/", verificarToken, async (req, res) => {
     return res.status(500).json({ sucesso: false, mensagem: "Erro interno." });
   }
 });
-
-
 
 // Listar pagamentos do usuário logado com validade e status dinâmico
 router.get("/meus", verificarToken, async (req, res) => {
