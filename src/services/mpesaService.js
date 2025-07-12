@@ -1,36 +1,30 @@
 const NodeRSA = require('node-rsa');
-const btoa = require('btoa'); // Para Base64 encoding (se não estiver em um ambiente de navegador)
+// const btoa = require('btoa'); // Removi, pois em Node.js moderno geralmente não é necessário, ou use Buffer.from().toString('base64')
 
 function generateMozambiqueAuthHeader() {
     const publicKeyString = process.env.MPESA_MZ_PUBLIC_KEY;
     const apiKeyValue = process.env.MPESA_MZ_API_KEY;
 
     const key = new NodeRSA();
-    // Importa a chave pública. O formato aqui é crucial.
-    // Se a chave pública não tiver os cabeçalhos PEM (-----BEGIN PUBLIC KEY-----),
-    // NodeRSA ainda pode importá-la como 'public' se for Base64 puro.
     key.importKey(publicKeyString, 'public');
 
-    // Criptografa a API Key. O padding é PKCS1_v1_5 conforme o exemplo Java.
-    // 'utf8' é o encoding do apiKey, 'base64' é o encoding da saída.
     const encryptedApiKeyBase64 = key.encrypt(apiKeyValue, 'base64', 'utf8', 'pkcs1_v1_5');
 
-    // A string resultante é o seu token Bearer.
     return `Bearer ${encryptedApiKeyBase64}`;
 }
 
-// Exemplo de como você faria uma chamada C2B (recapitulando o payload)
+// Esta é a função que você quer exportar como 'iniciarSTKPush'
 async function initiateC2BMozambique(amount, customerMsisdn, serviceProviderCode, transactionReference, purchasedItemsDesc) {
     const authHeader = generateMozambiqueAuthHeader();
-    const fullUrl = `${process.env.MPESA_MZ_BASE_URL}/${process.env.MPESA_MZ_CONTEXT_VALUE}/c2bPayment/singleStage/`; // MPESA_MZ_CONTEXT_VALUE = 'vodacomMOZ'
+    const fullUrl = `${process.env.MPESA_MZ_BASE_URL}/${process.env.MPESA_MZ_CONTEXT_VALUE}/c2bPayment/singleStage/`;
 
     const requestBody = {
-        "input_Amount": amount.toString(), // Converter para string se for número
+        "input_Amount": amount.toString(),
         "input_Country": "MOZ",
         "input_Currency": "MZN",
-        "input_CustomerMSISDN": customerMsisdn, // Ex: "2588400000001"
+        "input_CustomerMSISDN": customerMsisdn,
         "input_ServiceProviderCode": serviceProviderCode,
-        "input_ThirdPartyConversationID": "YOUR_UNIQUE_UUID_HERE", // Gerar um UUID único
+        "input_ThirdPartyConversationID": transactionReference, // Use transactionReference aqui se for seu UUID
         "input_TransactionReference": transactionReference,
         "input_PurchasedItemsDesc": purchasedItemsDesc
     };
@@ -40,10 +34,8 @@ async function initiateC2BMozambique(amount, customerMsisdn, serviceProviderCode
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": authHeader, // Seu Bearer Token criptografado
-                "Origin": process.env.MPESA_MZ_ORIGIN, // Seu domínio do Render
-                // Pode ser necessário incluir "X-Origin-Key" com sua API Key, dependendo da docs.
-                // "X-Origin-Key": process.env.MPESA_MZ_API_KEY
+                "Authorization": authHeader,
+                "Origin": process.env.MPESA_MZ_ORIGIN,
             },
             body: JSON.stringify(requestBody)
         });
@@ -63,3 +55,18 @@ async function initiateC2BMozambique(amount, customerMsisdn, serviceProviderCode
         throw error;
     }
 }
+
+// --- ADICIONE ESTA LINHA NO FINAL DO ARQUIVO ---
+module.exports = {
+    iniciarSTKPush: initiateC2BMozambique, // Exporta 'initiateC2BMozambique' como 'iniciarSTKPush'
+    // Você também pode exportar generateMozambiqueAuthHeader se precisar dela em outro lugar:
+    // generateMozambiqueAuthHeader: generateMozambiqueAuthHeader,
+};
+
+// Se você está usando 'uuid' para ThirdPartyConversationID, lembre-se de importar:
+// const { v4: uuidv4 } = require('uuid');
+// E usar uuidv4() para gerar o ID único.
+// Por exemplo, na sua rota de pagamentos, onde você já está gerando o accountReference,
+// você pode usar o mesmo valor ou um novo UUID para input_ThirdPartyConversationID.
+// Eu alterei o 'YOUR_UNIQUE_UUID_HERE' para 'transactionReference' no requestBody acima,
+// mas se você tem um UUID separado, pode passá-lo como um novo parâmetro para initiateC2BMozambique.
