@@ -1,55 +1,65 @@
-// services/mpesaService.js
-const axios = require("axios");
-const moment = require("moment"); // Instale: npm install moment
-const btoa = require("btoa");    // Instale: npm install btoa
-const { getAccessToken } = require("../utils/mpesaAuth");
-require('dotenv').config();
+const NodeRSA = require('node-rsa');
+const btoa = require('btoa'); // Para Base64 encoding (se não estiver em um ambiente de navegador)
 
-const BUSINESS_SHORT_CODE = process.env.MPESA_BUSINESS_SHORT_CODE;
-const MPESA_PASS_KEY = process.env.MPESA_PASS_KEY;
-const MPESA_STKPUSH_URL = process.env.MPESA_STKPUSH_URL;
-const CALLBACK_URL = process.env.MPESA_CALLBACK_URL;
+function generateMozambiqueAuthHeader() {
+    const publicKeyString = process.env.MPESA_MZ_PUBLIC_KEY;
+    const apiKeyValue = process.env.MPESA_MZ_API_KEY;
 
-const iniciarSTKPush = async ({ amount, phoneNumber, accountReference, transactionDesc }) => {
+    const key = new NodeRSA();
+    // Importa a chave pública. O formato aqui é crucial.
+    // Se a chave pública não tiver os cabeçalhos PEM (-----BEGIN PUBLIC KEY-----),
+    // NodeRSA ainda pode importá-la como 'public' se for Base64 puro.
+    key.importKey(publicKeyString, 'public');
+
+    // Criptografa a API Key. O padding é PKCS1_v1_5 conforme o exemplo Java.
+    // 'utf8' é o encoding do apiKey, 'base64' é o encoding da saída.
+    const encryptedApiKeyBase64 = key.encrypt(apiKeyValue, 'base64', 'utf8', 'pkcs1_v1_5');
+
+    // A string resultante é o seu token Bearer.
+    return `Bearer ${encryptedApiKeyBase64}`;
+}
+
+// Exemplo de como você faria uma chamada C2B (recapitulando o payload)
+async function initiateC2BMozambique(amount, customerMsisdn, serviceProviderCode, transactionReference, purchasedItemsDesc) {
+    const authHeader = generateMozambiqueAuthHeader();
+    const fullUrl = `${process.env.MPESA_MZ_BASE_URL}/${process.env.MPESA_MZ_CONTEXT_VALUE}/c2bPayment/singleStage/`; // MPESA_MZ_CONTEXT_VALUE = 'vodacomMOZ'
+
+    const requestBody = {
+        "input_Amount": amount.toString(), // Converter para string se for número
+        "input_Country": "MOZ",
+        "input_Currency": "MZN",
+        "input_CustomerMSISDN": customerMsisdn, // Ex: "2588400000001"
+        "input_ServiceProviderCode": serviceProviderCode,
+        "input_ThirdPartyConversationID": "YOUR_UNIQUE_UUID_HERE", // Gerar um UUID único
+        "input_TransactionReference": transactionReference,
+        "input_PurchasedItemsDesc": purchasedItemsDesc
+    };
+
     try {
-        const token = await getAccessToken();
-        if (!token) {
-            throw new Error("Token de acesso M-Pesa não disponível.");
-        }
-
-        const timestamp = moment().format("YYYYMMDDHHmmss");
-        const password = btoa(`${BUSINESS_SHORT_CODE}${MPESA_PASS_KEY}${timestamp}`);
-
-        const requestBody = {
-            BusinessShortCode: BUSINESS_SHORT_CODE,
-            Password: password,
-            Timestamp: timestamp,
-            TransactionType: "CustomerPayBillOnline", // Para Paybill. "CustomerBuyGoodsOnline" para Till Number.
-            Amount: amount,
-            PartyA: phoneNumber, // Número do cliente no formato 2547xxxxxxxxx
-            PartyB: BUSINESS_SHORT_CODE,
-            PhoneNumber: phoneNumber, // Mesmo que PartyA
-            CallBackURL: CALLBACK_URL,
-            AccountReference: accountReference, // Referência única para sua transação
-            TransactionDesc: transactionDesc || "Pagamento de Serviço/Assinatura",
-        };
-
-        console.log("Enviando STK Push Request:", JSON.stringify(requestBody, null, 2));
-
-        const response = await axios.post(MPESA_STKPUSH_URL, requestBody, {
+        const response = await fetch(fullUrl, {
+            method: "POST",
             headers: {
-                Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
+                "Authorization": authHeader, // Seu Bearer Token criptografado
+                "Origin": process.env.MPESA_MZ_ORIGIN, // Seu domínio do Render
+                // Pode ser necessário incluir "X-Origin-Key" com sua API Key, dependendo da docs.
+                // "X-Origin-Key": process.env.MPESA_MZ_API_KEY
             },
+            body: JSON.stringify(requestBody)
         });
 
-        console.log("Resposta STK Push API:", JSON.stringify(response.data, null, 2));
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error("Erro na API M-Pesa Moçambique:", errorData);
+            throw new Error(`M-Pesa API error: ${JSON.stringify(errorData)}`);
+        }
 
-        return response.data; // Retorna a resposta inicial (MerchantRequestID, CheckoutRequestID, ResponseCode)
+        const data = await response.json();
+        console.log("Resposta M-Pesa Moçambique:", data);
+        return data;
+
     } catch (error) {
-        console.error("Erro ao iniciar STK Push:", error.response ? error.response.data : error.message);
-        throw new Error(`Erro ao iniciar STK Push: ${error.response ? (error.response.data.errorMessage || error.response.data.ResponseDescription) : error.message}`);
+        console.error("Erro ao iniciar pagamento M-Pesa Moçambique:", error);
+        throw error;
     }
-};
-
-module.exports = { iniciarSTKPush };
+}

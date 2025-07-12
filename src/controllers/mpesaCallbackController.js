@@ -54,6 +54,8 @@ async function ativarAssinaturaUsuario(usuarioId, pacoteNome) {
     }
 }
 
+
+
 // --- Handler Principal do Callback M-Pesa ---
 const mpesaCallbackHandler = async (req, res) => {
     console.log("======================================");
@@ -75,6 +77,8 @@ const mpesaCallbackHandler = async (req, res) => {
     const resultCode = stkCallback.ResultCode; // 0 para sucesso, outros para falha
     const resultDesc = stkCallback.ResultDesc;
     const merchantRequestID = stkCallback.MerchantRequestID; // Para rastreamento adicional
+
+
 
     console.log(`[MpesaCallback] Info: CheckoutRequestID=${checkoutRequestID}, MerchantRequestID=${merchantRequestID}, ResultCode=${resultCode}, ResultDesc=${resultDesc}`);
 
