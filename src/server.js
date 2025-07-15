@@ -8,7 +8,7 @@ const Documento = require('./models/documentoModel'); // importar modelo para co
 
 
 const chatbotRoute = require('./routes/chatbot');
-app.use('/api/chatbot', chatbotRoute);
+
 
 // importar rotas
 const documentoRoutes = require('./routes/documentoRoutes.js');
@@ -22,7 +22,8 @@ const port = process.env.PORT || 5000;
 
 
 
-
+// Rota API do chatbot
+app.use('/api/chatbot', chatbotRoute);
 
 
 // Callback da M-Pesa com corpo bruto (antes do express.json())
