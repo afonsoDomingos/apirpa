@@ -5,6 +5,10 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const Documento = require('./models/documentoModel'); // importar modelo para contar documentos'
 
+
+const chatbotRoute = require('./routes/chatbot');
+app.use('/api/chatbot', chatbotRoute);
+
 // importar rotas
 const documentoRoutes = require('./routes/documentoRoutes.js');
 const authRoutes = require('./routes/authRoutes.js');
