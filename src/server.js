@@ -4,9 +4,10 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 const connectDB = require('./config/db');
-const Documento = require('./models/documentoModel'); // importar modelo para contar documentos'
+const Documento = require('./models/documentoModel');
 
-// importar rotas
+// Importar rotas
+const chatbotRoute = require('./routes/chatbot');
 const documentoRoutes = require('./routes/documentoRoutes.js');
 const authRoutes = require('./routes/authRoutes.js');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
@@ -16,22 +17,7 @@ const { mpesaCallbackHandler } = require("./controllers/mpesaCallbackController"
 
 const port = process.env.PORT || 5000;
 
-
-
-
-
-
-// Callback da M-Pesa com corpo bruto (antes do express.json())
-app.post(
-  "/api/pagamentos/mpesa/callback",
-  express.raw({ type: "*/*" }),
-  mpesaCallbackHandler
-);
-
-
-
-
-// Middleware JSON para o restante da API
+// ⚠️ Middleware JSON - deve vir ANTES de usar rotas com req.body
 app.use(express.json());
 
 // CORS
@@ -46,23 +32,30 @@ app.use(cors({
   optionsSuccessStatus: 200,
 }));
 
-// Middleware JSON
-app.use(express.json());
-
 // Rota simples para testar
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
-// Conectar ao DB e depois iniciar servidor
+// Rota API do Chatbot
+app.use('/api/chatbot', chatbotRoute);
+
+// Callback da M-Pesa (com corpo bruto)
+app.post(
+  "/api/pagamentos/mpesa/callback",
+  express.raw({ type: "*/*" }),
+  mpesaCallbackHandler
+);
+
+// Conectar ao MongoDB e iniciar servidor
 connectDB()
   .then(() => {
-    // Rotas
+    // Outras rotas
     app.use('/api', documentoRoutes); 
     app.use('/api/auth', authRoutes);
     app.use('/api', solicitacoesRouter);
     app.use('/api/documentosguardados', documentosGuardadosRoutes);
     app.use('/api/pagamentos', pagamentoRoutes);
 
-    // Rota para contar documentos reportados
+    // Contador de documentos reportados
     app.get('/api/documentos/count', async (req, res) => {
       try {
         const count = await Documento.countDocuments({ origem: 'reportado' });
@@ -73,6 +66,7 @@ connectDB()
       }
     });
 
+    // Iniciar servidor
     app.listen(port, () => {
       console.log(`Servidor rodando na porta ${port}`);
     });
