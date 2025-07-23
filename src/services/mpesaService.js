@@ -36,7 +36,7 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
     if (typeof amount !== 'number' || amount <= 0) {
         throw new Error("Erro de Validação: 'amount' deve ser um número positivo.");
     }
-    if (!customerMsisdn || !/^(84|85)\d{7}$/.test(customerMsisdn)) {
+    if (!customerMsisdn || !/^258(84|85)\d{7}$/.test(customerMsisdn)) {
         throw new Error("Erro de Validação: 'customerMsisdn' inválido.");
     }
     if (!transactionReference || transactionReference.trim() === '') {
