@@ -1,8 +1,6 @@
-// models/pagamentoModel.js
 const mongoose = require('mongoose');
 
 const pagamentoSchema = new mongoose.Schema({
-    // ... seus campos de pagamento aqui ...
     usuario: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Usuario',
@@ -23,7 +21,11 @@ const pagamentoSchema = new mongoose.Schema({
         required: true
     },
     telefone: {
-        type: String
+        type: String,
+        validate: {
+            validator: v => /^(84|85)\d{7}$/.test(v),
+            message: props => `${props.value} não é um número válido M-Pesa.`
+        }
     },
     cartao: {
         numeroFinal: String,
@@ -42,15 +44,14 @@ const pagamentoSchema = new mongoose.Schema({
         default: Date.now
     },
     mpesa: {
-        merchantRequestId: { type: String },
-        checkoutRequestId: { type: String },
+        thirdPartyConversationID: { type: String },
+        conversationID: { type: String },
+        transactionReference: { type: String },
         responseCode: { type: String },
-        responseDescription: { type: String },
-        customerMessage: { type: String },
-        accountReference: { type: String },
+        responseDesc: { type: String },
         resultCode: { type: String },
         resultDesc: { type: String },
-        mpesaReceiptNumber: { type: String },
+        transactionId: { type: String }, // Pode vir como mpesaReceiptNumber
         transactionDate: { type: String },
         amountConfirmed: { type: Number },
         phoneNumberConfirmed: { type: String },
@@ -60,6 +61,8 @@ const pagamentoSchema = new mongoose.Schema({
             default: 'aceito'
         },
         rawCallback: { type: mongoose.Schema.Types.Mixed },
+        erro: { type: String },
+        log: { type: mongoose.Schema.Types.Mixed }
     },
     diasAdicionados: { type: Number },
     dataExpiracaoAssinatura: { type: Date },
@@ -67,6 +70,4 @@ const pagamentoSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// A chave para evitar o OverwriteModelError está aqui:
-// Tenta obter o modelo existente; se não existir, o define.
 module.exports = mongoose.models.Pagamento || mongoose.model('Pagamento', pagamentoSchema);

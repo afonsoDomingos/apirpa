@@ -1,9 +1,19 @@
 const NodeRSA = require('node-rsa');
-// const btoa = require('btoa'); // Removi, pois em Node.js moderno geralmente não é necessário, ou use Buffer.from().toString('base64')
+const fetch = require('node-fetch'); // Importa node-fetch para fazer requisições HTTP
 
+/**
+ * Gera o cabeçalho de autorização para chamadas à API M-Pesa Moçambique.
+ */
 function generateMozambiqueAuthHeader() {
     const publicKeyString = process.env.MPESA_MZ_PUBLIC_KEY;
     const apiKeyValue = process.env.MPESA_MZ_API_KEY;
+
+    if (!publicKeyString) {
+        throw new Error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_PUBLIC_KEY' faltando.");
+    }
+    if (!apiKeyValue) {
+        throw new Error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_API_KEY' faltando.");
+    }
 
     const key = new NodeRSA();
     key.importKey(publicKeyString, 'public');
@@ -13,60 +23,79 @@ function generateMozambiqueAuthHeader() {
     return `Bearer ${encryptedApiKeyBase64}`;
 }
 
-// Esta é a função que você quer exportar como 'iniciarSTKPush'
-async function initiateC2BMozambique(amount, customerMsisdn, serviceProviderCode, transactionReference, purchasedItemsDesc) {
-    const authHeader = generateMozambiqueAuthHeader();
-    const fullUrl = `${process.env.MPESA_MZ_BASE_URL}/${process.env.MPESA_MZ_CONTEXT_VALUE}/c2bPayment/singleStage/`;
+/**
+ * Inicia um pagamento C2B (Customer-to-Business) via M-Pesa Moçambique.
+ *
+ * @param {number} amount O valor a ser cobrado.
+ * @param {string} customerMsisdn Número do cliente (ex: "84XXXXXXX" ou "85XXXXXXX").
+ * @param {string} transactionReference Referência única da transação (use UUID).
+ * @param {string} purchasedItemsDesc Descrição dos produtos ou serviços.
+ * @returns {Promise<object>} Resposta da API M-Pesa.
+ */
+async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purchasedItemsDesc) {
+    if (typeof amount !== 'number' || amount <= 0) {
+        throw new Error("Erro de Validação: 'amount' deve ser um número positivo.");
+    }
+    if (!customerMsisdn || !/^(84|85)\d{7}$/.test(customerMsisdn)) {
+        throw new Error("Erro de Validação: 'customerMsisdn' inválido.");
+    }
+    if (!transactionReference || transactionReference.trim() === '') {
+        throw new Error("Erro de Validação: 'transactionReference' não pode estar vazio.");
+    }
+    if (!purchasedItemsDesc || purchasedItemsDesc.trim() === '') {
+        throw new Error("Erro de Validação: 'purchasedItemsDesc' não pode estar vazio.");
+    }
 
-    const requestBody = {
-        "input_Amount": amount.toString(),
-        "input_Country": "MOZ",
-        "input_Currency": "MZN",
-        "input_CustomerMSISDN": customerMsisdn,
-        "input_ServiceProviderCode": serviceProviderCode,
-        "input_ThirdPartyConversationID": transactionReference, // Use transactionReference aqui se for seu UUID
-        "input_TransactionReference": transactionReference,
-        "input_PurchasedItemsDesc": purchasedItemsDesc
-    };
+    const baseUrl = process.env.MPESA_MZ_BASE_URL;
+    const contextValue = process.env.MPESA_MZ_CONTEXT_VALUE;
+    const origin = process.env.MPESA_MZ_ORIGIN;
+    const serviceProviderCode = process.env.MPESA_MZ_SERVICE_PROVIDER_CODE;
+
+    if (!baseUrl) throw new Error("Variável 'MPESA_MZ_BASE_URL' faltando.");
+    if (!contextValue) throw new Error("Variável 'MPESA_MZ_CONTEXT_VALUE' faltando.");
+    if (!origin) throw new Error("Variável 'MPESA_MZ_ORIGIN' faltando.");
+    if (!serviceProviderCode) throw new Error("Variável 'MPESA_MZ_SERVICE_PROVIDER_CODE' faltando.");
 
     try {
+        const authHeader = generateMozambiqueAuthHeader();
+        const fullUrl = `${baseUrl}/${contextValue}/c2bPayment/singleStage/`;
+
+        const requestBody = {
+            "input_Amount": amount.toString(),
+            "input_Country": "MOZ",
+            "input_Currency": "MZN",
+            "input_CustomerMSISDN": customerMsisdn,
+            "input_ServiceProviderCode": serviceProviderCode,
+            "input_ThirdPartyConversationID": transactionReference,
+            "input_TransactionReference": transactionReference,
+            "input_PurchasedItemsDesc": purchasedItemsDesc
+        };
+
         const response = await fetch(fullUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": authHeader,
-                "Origin": process.env.MPESA_MZ_ORIGIN,
+                "Origin": origin,
             },
             body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            console.error("Erro na API M-Pesa Moçambique:", errorData);
-            throw new Error(`M-Pesa API error: ${JSON.stringify(errorData)}`);
+            throw new Error(`Erro na API M-Pesa: ${response.status} - ${JSON.stringify(errorData)}`);
         }
 
         const data = await response.json();
-        console.log("Resposta M-Pesa Moçambique:", data);
         return data;
 
     } catch (error) {
-        console.error("Erro ao iniciar pagamento M-Pesa Moçambique:", error);
+        console.error("Erro ao iniciar pagamento M-Pesa:", error);
         throw error;
     }
 }
 
-// --- ADICIONE ESTA LINHA NO FINAL DO ARQUIVO ---
+// Exporta a função com nome em português para facilitar o uso no restante do código
 module.exports = {
-    iniciarSTKPush: initiateC2BMozambique, // Exporta 'initiateC2BMozambique' como 'iniciarSTKPush'
-    // Você também pode exportar generateMozambiqueAuthHeader se precisar dela em outro lugar:
-    // generateMozambiqueAuthHeader: generateMozambiqueAuthHeader,
+    iniciarSTKPush,
 };
-
-// Se você está usando 'uuid' para ThirdPartyConversationID, lembre-se de importar:
-// const { v4: uuidv4 } = require('uuid');
-// E usar uuidv4() para gerar o ID único.
-// Por exemplo, na sua rota de pagamentos, onde você já está gerando o accountReference,
-// você pode usar o mesmo valor ou um novo UUID para input_ThirdPartyConversationID.
-// Eu alterei o 'YOUR_UNIQUE_UUID_HERE' para 'transactionReference' no requestBody acima,
-// mas se você tem um UUID separado, pode passá-lo como um novo parâmetro para initiateC2BMozambique.
