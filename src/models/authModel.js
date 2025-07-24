@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const authSchema = new mongoose.Schema({
   nome: {
@@ -31,13 +31,13 @@ const authSchema = new mongoose.Schema({
 // Middleware para criptografar a senha automaticamente antes de salvar
 authSchema.pre('save', async function (next) {
   if (!this.isModified('senha')) return next();
-  this.senha = await bcrypt.hash(this.senha, 10);
+  this.senha = await bcryptjs.hash(this.senha, 10);
   next();
 });
 
 // Método para comparar senha
 authSchema.methods.matchSenha = async function (senhaFornecida) {
-  return await bcrypt.compare(senhaFornecida, this.senha);
+  return await bcryptjs.compare(senhaFornecida, this.senha);
 };
 
 const Usuario = mongoose.model('Usuario', authSchema);

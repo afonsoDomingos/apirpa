@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const Usuario = require('../models/authModel');
 //const verificarToken = require('../middleware/verificarToken'); // Certifique-se de ter esse middleware
 const verificarToken = require('../middleware/authMiddleware');
@@ -138,8 +138,8 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     const updateData = {};
     if (nome) updateData.nome = nome;
     if (senha) {
-      const salt = await bcrypt.genSalt(10);
-      const senhaHash = await bcrypt.hash(senha, salt);
+      const salt = await bcryptjs.genSalt(10);
+      const senhaHash = await bcryptjs.hash(senha, salt);
       console.log('Senha recebida:', senha);
       console.log('Hash gerado:', senhaHash);
       updateData.senha = senhaHash;
