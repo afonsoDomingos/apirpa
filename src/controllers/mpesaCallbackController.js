@@ -1,163 +1,85 @@
 // controllers/mpesaCallbackController.js
+const Pagamento = require("../models/pagamentoModel"); // Importa o modelo de pagamento
 
-// Importa o modelo de Pagamento que você acabou de atualizar
-const Pagamento = require("../models/pagamentoModel");
-// Importa o modelo de Usuário/User que você também atualizou
-const Usuario = require("../models/usuarioModel"); // CORRIGIDO: Agora usa 'usuarioModel'
-
-// --- Função Auxiliar para Ativar/Renovar a Assinatura do Usuário ---
-// Esta função é chamada apenas quando um pagamento M-Pesa é bem-sucedido.
-async function ativarAssinaturaUsuario(usuarioId, pacoteNome) {
-    try {
-        const user = await Usuario.findById(usuarioId); // Encontra o usuário pelo ID
-        if (!user) {
-            console.error(`[AtivarAssinatura] Erro: Usuário ${usuarioId} não encontrado para ativar assinatura.`);
-            return; // Sai da função se o usuário não for encontrado
-        }
-
-        const nomePacoteLower = pacoteNome?.toLowerCase().trim();
-        let diasParaAdicionar = 0;
-
-        // Define quantos dias adicionar com base no pacote
-        if (nomePacoteLower === "mensal") {
-            diasParaAdicionar = 30;
-        } else if (nomePacoteLower === "anual") {
-            diasParaAdicionar = 365;
-        } else {
-            console.warn(`[AtivarAssinatura] Aviso: Pacote '${pacoteNome}' desconhecido para o usuário ${usuarioId}. Nenhuma data de validade adicionada.`);
-            return; // Sai se o pacote não for reconhecido para adicionar dias
-        }
-
-        // Calcula a nova data de expiração da assinatura
-        let dataExpiracaoAtual = user.assinaturaExpiracao || new Date(); // Pega a data atual se não houver expiração prévia
-        // Se a assinatura atual já expirou (ou está no passado), a nova começa a partir de agora.
-        // Isso evita que a adição de dias seja a partir de uma data antiga.
-        if (dataExpiracaoAtual < new Date()) {
-            dataExpiracaoAtual = new Date();
-        }
-
-        // Adiciona os dias ao campo `assinaturaExpiracao` do usuário
-        dataExpiracaoAtual.setDate(dataExpiracaoAtual.getDate() + diasParaAdicionar);
-
-        // Atualiza os campos de assinatura no modelo do usuário
-        user.assinaturaAtiva = true;
-        user.assinaturaExpiracao = dataExpiracaoAtual;
-        user.pacoteAtual = pacoteNome; // Define o pacote que está ativo
-        // O campo `diasRestantesAssinatura` pode ser um virtual ou ser atualizado aqui
-        user.diasRestantesAssinatura = user.diasRestantes; // Se 'diasRestantes' for um virtual, ele recalcula automaticamente
-
-        await user.save(); // Salva as alterações no usuário no banco de dados
-        console.log(`[AtivarAssinatura] Sucesso: Assinatura do usuário ${usuarioId} (${pacoteNome}) atualizada para expirar em ${dataExpiracaoAtual.toISOString().split('T')[0]}.`);
-
-    } catch (error) {
-        console.error(`[AtivarAssinatura] Erro inesperado ao ativar assinatura para usuário ${usuarioId}:`, error);
-    }
-}
-
-
-
-// --- Handler Principal do Callback M-Pesa ---
+/**
+ * Lida com as notificações de callback M-Pesa C2B recebidas.
+ * Este endpoint é chamado pelo M-Pesa para notificar o sistema sobre o status final do pagamento.
+ * @param {object} req - Objeto de requisição Express.
+ * @param {object} res - Objeto de resposta Express.
+ */
 const mpesaCallbackHandler = async (req, res) => {
-    console.log("======================================");
-    console.log("Recebendo callback M-Pesa:", JSON.stringify(req.body, null, 2)); // Loga o callback completo
-    console.log("======================================");
-
-    const callbackData = req.body;
-
-    // Validação inicial da estrutura do callback
-    if (!callbackData || !callbackData.Body || !callbackData.Body.stkCallback) {
-        console.warn("[MpesaCallback] Aviso: Callback M-Pesa com formato inválido ou inesperado.");
-        // Sempre retorne 200 OK para o M-Pesa para evitar retransmissões desnecessárias.
-        // ResultCode 1 indica que o callback foi recebido, mas com erro no processamento (do seu lado).
-        return res.status(200).json({ ResultCode: 1, ResultDesc: "Formato de callback inválido." });
-    }
-
-    const stkCallback = callbackData.Body.stkCallback;
-    const checkoutRequestID = stkCallback.CheckoutRequestID;
-    const resultCode = stkCallback.ResultCode; // 0 para sucesso, outros para falha
-    const resultDesc = stkCallback.ResultDesc;
-    const merchantRequestID = stkCallback.MerchantRequestID; // Para rastreamento adicional
-
-
-
-    console.log(`[MpesaCallback] Info: CheckoutRequestID=${checkoutRequestID}, MerchantRequestID=${merchantRequestID}, ResultCode=${resultCode}, ResultDesc=${resultDesc}`);
+    console.log("--- Callback M-Pesa Recebido ---");
+    let callbackData;
 
     try {
-        // Encontra o pagamento pendente no seu DB usando o CheckoutRequestID
-        const pagamento = await Pagamento.findOne({ "mpesa.checkoutRequestId": checkoutRequestID });
+        // Tenta parsear o corpo bruto (Buffer) para JSON
+        callbackData = JSON.parse(req.body.toString());
+        console.log("Payload do Callback M-Pesa (JSON):", JSON.stringify(callbackData, null, 2));
+    } catch (parseError) {
+        console.error("ERRO: Falha ao parsear o corpo do callback M-Pesa para JSON:", parseError.message);
+        console.error("Corpo bruto recebido:", req.body.toString());
+        // Retorna 200 OK para M-Pesa para evitar retries, mas loga o erro
+        return res.status(200).send("Erro: Corpo do callback inválido.");
+    }
+
+    try {
+        // Tenta extrair a referência da transação. Os nomes dos campos podem variar.
+        // Consulte a documentação de callback C2B do M-Pesa para os nomes exatos.
+        const transactionReference = callbackData.output_ThirdPartyReference ||
+                                     (callbackData.Result && callbackData.Result.ThirdPartyReference) ||
+                                     (callbackData.Result && callbackData.Result.TransactionInfo && callbackData.Result.TransactionInfo.ThirdPartyReference);
+
+        const resultCode = callbackData.output_ResponseCode ||
+                           (callbackData.Result && callbackData.Result.ResultCode);
+
+        const resultDesc = callbackData.output_ResponseDescription ||
+                           (callbackData.Result && callbackData.Result.ResultDesc);
+
+        if (!transactionReference) {
+            console.error("ERRO: Callback M-Pesa sem referência de transação válida:", callbackData);
+            return res.status(200).send("Callback M-Pesa recebido, mas referência de transação inválida.");
+        }
+
+        const pagamento = await Pagamento.findOne({ 'mpesa.transactionReference': transactionReference });
 
         if (!pagamento) {
-            console.warn(`[MpesaCallback] Aviso: Pagamento não encontrado para CheckoutRequestID: ${checkoutRequestID}.`);
-            // Retorna ResultCode 0 aqui para M-Pesa parar de retransmitir.
-            // O pagamento pode já ter sido processado (duplicado) ou ser de um teste antigo.
-            return res.status(200).json({ ResultCode: 0, ResultDesc: "Callback recebido, mas pagamento não encontrado no DB." });
+            console.warn(`AVISO: Pagamento não encontrado no DB para a referência M-Pesa: ${transactionReference}`);
+            return res.status(200).send("Pagamento não encontrado, mas callback M-Pesa recebido.");
         }
 
-        // --- Prevenção de Processamento Duplicado ---
-        // Verifica se o pagamento já foi marcado como 'pago' ou 'falhou'
-        if (pagamento.status === "pago" || pagamento.status === "falhou") {
-            console.log(`[MpesaCallback] Info: Pagamento ${pagamento._id} já processado com status '${pagamento.status}'. Ignorando callback duplicado.`);
-            return res.status(200).json({ ResultCode: 0, ResultDesc: "Callback duplicado ignorado." });
+        pagamento.mpesa.rawCallback = callbackData; // Salva o payload completo para depuração
+
+        if (resultCode === '0') { // Assumindo '0' significa sucesso
+            pagamento.status = "pago";
+            pagamento.mpesa.mpesaStatus = "sucesso";
+            pagamento.mpesa.resultCode = resultCode;
+            pagamento.mpesa.resultDesc = resultDesc;
+
+            // Extraia detalhes da transação confirmada (nomes dos campos dependem da API M-Pesa)
+            pagamento.mpesa.transactionId = callbackData.Result.TransactionID || (callbackData.Result.TransactionInfo && callbackData.Result.TransactionInfo.TransactionID);
+            pagamento.mpesa.transactionDate = callbackData.Result.TransactionDate || (callbackData.Result.TransactionInfo && callbackData.Result.TransactionInfo.TransactionDate);
+            pagamento.mpesa.amountConfirmed = callbackData.Result.Amount || (callbackData.Result.TransactionInfo && callbackData.Result.TransactionInfo.Amount);
+            pagamento.mpesa.phoneNumberConfirmed = callbackData.Result.CustomerMSISDN || (callbackData.Result.TransactionInfo && callbackData.Result.TransactionInfo.CustomerMSISDN);
+            // Lógica para atualizar a assinatura do usuário aqui, se for o caso
+        } else {
+            pagamento.status = "falhou";
+            pagamento.mpesa.mpesaStatus = "falha";
+            pagamento.mpesa.resultCode = resultCode;
+            pagamento.mpesa.resultDesc = resultDesc;
+            pagamento.mpesa.erro = resultDesc;
         }
 
-        // Atualiza os campos do callback M-Pesa no objeto `mpesa` do documento de Pagamento
-        pagamento.mpesa.resultCode = resultCode;
-        pagamento.mpesa.resultDesc = resultDesc;
-        pagamento.mpesa.rawCallback = callbackData; // Salva o callback completo para auditoria
+        await pagamento.save();
+        console.log(`SUCESSO: Pagamento '${pagamento._id}' atualizado para status '${pagamento.status}' via callback M-Pesa.`);
 
-        if (resultCode === 0) { // Transação M-Pesa bem-sucedida
-            const callbackMetadata = stkCallback.CallbackMetadata;
-
-            if (callbackMetadata && callbackMetadata.Item) {
-                // Extrai os detalhes da transação do CallbackMetadata
-                const mpesaReceiptNumber = callbackMetadata.Item.find(item => item.Name === "MpesaReceiptNumber")?.Value;
-                const transactionDate = callbackMetadata.Item.find(item => item.Name === "TransactionDate")?.Value;
-                const amountConfirmed = callbackMetadata.Item.find(item => item.Name === "Amount")?.Value;
-                const phoneNumberConfirmed = callbackMetadata.Item.find(item => item.Name === "PhoneNumber")?.Value;
-
-                // Atualiza o status principal do pagamento e detalhes confirmados
-                pagamento.status = "pago"; // Altera o status do seu pagamento para 'pago'
-                pagamento.mpesa.mpesaStatus = "concluido"; // Status do ciclo de vida M-Pesa
-                pagamento.mpesa.mpesaReceiptNumber = mpesaReceiptNumber;
-                pagamento.mpesa.transactionDate = transactionDate;
-                pagamento.mpesa.amountConfirmed = amountConfirmed;
-                pagamento.mpesa.phoneNumberConfirmed = phoneNumberConfirmed;
-
-                console.log(`[MpesaCallback] Sucesso: Pagamento M-Pesa '${mpesaReceiptNumber}' concluído para o usuário '${pagamento.usuario}'.`);
-
-                // --- Lógica CRÍTICA: ATIVAR/RENOVAR A ASSINATURA DO USUÁRIO AQUI ---
-                // Chama a função auxiliar para atualizar o modelo de Usuário
-                await ativarAssinaturaUsuario(pagamento.usuario, pagamento.pacote);
-
-                // Opcional: Envie notificações para o usuário (email, push notification, etc.)
-                // await sendEmail(pagamento.usuario.email, "Pagamento Confirmado!", "Sua assinatura foi ativada.");
-
-            } else {
-                console.warn(`[MpesaCallback] Aviso: Callback bem-sucedido (${resultCode}), mas sem CallbackMetadata essencial para CheckoutRequestID: ${checkoutRequestID}.`);
-                pagamento.status = "falhou"; // Considerar como falha se dados essenciais estiverem faltando
-                pagamento.mpesa.mpesaStatus = "falha";
-            }
-        } else { // Transação falhou ou foi cancelada pelo usuário
-            pagamento.status = "falhou"; // Altera o status do seu pagamento para 'falhou'
-            pagamento.mpesa.mpesaStatus = "falha"; // Status do ciclo de vida M-Pesa
-            console.log(`[MpesaCallback] Falha: Pagamento M-Pesa falhou para CheckoutRequestID ${checkoutRequestID}: ${resultDesc}.`);
-            // Opcional: Notifique o usuário sobre a falha e peça para tentar novamente
-            // await sendEmail(pagamento.usuario.email, "Pagamento Falhou", "Por favor, tente novamente.");
-        }
-
-        await pagamento.save(); // Salva as alterações no documento de pagamento
-        console.log(`[MpesaCallback] Info: Status do pagamento '${pagamento._id}' atualizado para: '${pagamento.status}'`);
-
-        // Resposta para o M-Pesa: 200 OK com ResultCode 0 para indicar que o callback foi
-        // *recebido e processado* com sucesso pelo seu sistema.
-        return res.status(200).json({ ResultCode: 0, ResultDesc: "Callback processado com sucesso pelo backend." });
+        res.status(200).send("Callback M-Pesa recebido e processado com sucesso.");
 
     } catch (error) {
-        console.error("[MpesaCallback] Erro interno ao processar callback M-Pesa no backend:", error);
-        // Em caso de erro interno no seu backend, retorne ResultCode 1 para M-Pesa
-        // (eles podem tentar retransmitir, dependendo da configuração deles)
-        return res.status(200).json({ ResultCode: 1, ResultDesc: `Erro interno ao processar callback: ${error.message}` });
+        console.error("ERRO: Falha no processamento do callback M-Pesa:", error);
+        res.status(200).send("Erro interno ao processar o callback M-Pesa.");
     }
 };
 
-module.exports = { mpesaCallbackHandler };
+module.exports = {
+    mpesaCallbackHandler
+};

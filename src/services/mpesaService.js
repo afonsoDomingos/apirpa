@@ -1,124 +1,86 @@
+// services/mpesaService.js
+const axios = require('axios');
 const NodeRSA = require('node-rsa');
-const fetch = require('node-fetch'); // Importa node-fetch para fazer requisições HTTP
+require('dotenv').config();
 
-// Função para gerar o cabeçalho de autorização
-function generateMozambiqueAuthHeader() {
-    const publicKeyString = process.env.MPESA_MZ_PUBLIC_KEY;
-    const apiKeyValue = process.env.MPESA_MZ_API_KEY;
+const MPESA_API_KEY = process.env.MPESA_API_KEY;
+const MPESA_PUBLIC_KEY = process.env.MPESA_PUBLIC_KEY;
+const MPESA_C2B_URL = process.env.MPESA_C2B_URL; // Usando MPESA_C2B_URL
+const MPESA_SERVICE_PROVIDER_CODE = process.env.MPESA_SERVICE_PROVIDER_CODE;
+const MPESA_CALLBACK_URL = process.env.MPESA_CALLBACK_URL;
 
-    if (!publicKeyString) {
-        console.error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_PUBLIC_KEY' faltando.");
-        throw new Error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_PUBLIC_KEY' faltando.");
-    }
-    if (!apiKeyValue) {
-        console.error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_API_KEY' faltando.");
-        throw new Error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_API_KEY' faltando.");
-    }
-
-    const key = new NodeRSA();
-    key.importKey(publicKeyString, 'public');
-
-    const encryptedApiKeyBase64 = key.encrypt(apiKeyValue, 'base64', 'utf8', 'pkcs1_v1_5');
-
-    console.log("Cabeçalho de autorização gerado com sucesso.");
-    return `Bearer ${encryptedApiKeyBase64}`;
+if (!MPESA_API_KEY || !MPESA_PUBLIC_KEY || !MPESA_C2B_URL || !MPESA_SERVICE_PROVIDER_CODE || !MPESA_CALLBACK_URL) {
+    console.error("ERRO: Variáveis de ambiente M-Pesa essenciais em falta. Verifique seu arquivo .env.");
+    process.exit(1);
 }
 
-// Função para iniciar o pagamento C2B (Customer-to-Business) via M-Pesa
-async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purchasedItemsDesc) {
-    console.log("Iniciando o pagamento C2B via M-Pesa...");
-
-    if (typeof amount !== 'number' || amount <= 0) {
-        console.error("Erro de Validação: 'amount' deve ser um número positivo.");
-        throw new Error("Erro de Validação: 'amount' deve ser um número positivo.");
-    }
-    if (!customerMsisdn || !/^258(84|85)\d{7}$/.test(customerMsisdn)) {
-        console.error("Erro de Validação: 'customerMsisdn' inválido.");
-        throw new Error("Erro de Validação: 'customerMsisdn' inválido.");
-    }
-    if (!transactionReference || transactionReference.trim() === '') {
-        console.error("Erro de Validação: 'transactionReference' não pode estar vazio.");
-        throw new Error("Erro de Validação: 'transactionReference' não pode estar vazio.");
-    }
-    if (!purchasedItemsDesc || purchasedItemsDesc.trim() === '') {
-        console.error("Erro de Validação: 'purchasedItemsDesc' não pode estar vazio.");
-        throw new Error("Erro de Validação: 'purchasedItemsDesc' não pode estar vazio.");
-    }
-
-    const baseUrl = process.env.MPESA_MZ_BASE_URL;
-    const contextValue = process.env.MPESA_MZ_CONTEXT_VALUE;
-    const origin = process.env.MPESA_MZ_ORIGIN;
-    const serviceProviderCode = process.env.MPESA_MZ_SERVICE_PROVIDER_CODE;
-
-    if (!baseUrl) {
-        console.error("Erro de Configuração: Variável 'MPESA_MZ_BASE_URL' faltando.");
-        throw new Error("Variável 'MPESA_MZ_BASE_URL' faltando.");
-    }
-    if (!contextValue) {
-        console.error("Erro de Configuração: Variável 'MPESA_MZ_CONTEXT_VALUE' faltando.");
-        throw new Error("Variável 'MPESA_MZ_CONTEXT_VALUE' faltando.");
-    }
-    if (!origin) {
-        console.error("Erro de Configuração: Variável 'MPESA_MZ_ORIGIN' faltando.");
-        throw new Error("Variável 'MPESA_MZ_ORIGIN' faltando.");
-    }
-    if (!serviceProviderCode) {
-        console.error("Erro de Configuração: Variável 'MPESA_MZ_SERVICE_PROVIDER_CODE' faltando.");
-        throw new Error("Variável 'MPESA_MZ_SERVICE_PROVIDER_CODE' faltando.");
-    }
-
+function getBearerToken(apiKey, publicKey) {
     try {
-        const authHeader = generateMozambiqueAuthHeader();
-        const fullUrl = `${baseUrl}:${process.env.MPESA_MZ_PORTA}/${contextValue}/c2bPayment/singleStage/`;
+        const key = new NodeRSA();
+        key.importKey(publicKey, 'pkcs8-public');
+        const encryptedApiKey = key.encrypt(apiKey, 'base64', 'utf8', 'pkcs1_padding');
+        return encryptedApiKey;
+    } catch (error) {
+        console.error("Erro ao encriptar a Chave API:", error.message);
+        throw new Error("Falha ao gerar o token Bearer M-Pesa.");
+    }
+}
 
-        console.log("Enviando requisição para M-Pesa:", fullUrl); // Log da URL de requisição
+async function iniciarSTKPush(amount, phoneNumber, transactionReference, description) {
+    try {
+        const bearerToken = getBearerToken(MPESA_API_KEY, MPESA_PUBLIC_KEY);
 
-        const requestBody = {
-            "input_Amount": amount.toString(),
-            "input_Country": "MOZ",
-            "input_Currency": "MZN",
-            "input_CustomerMSISDN": customerMsisdn,
-            "input_ServiceProviderCode": serviceProviderCode,
-            "input_ThirdPartyConversationID": transactionReference,
-            "input_TransactionReference": transactionReference,
-            "input_PurchasedItemsDesc": purchasedItemsDesc
+        const headers = {
+            'Authorization': `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json'
         };
 
-        console.log("Corpo da requisição:", JSON.stringify(requestBody, null, 2)); // Log do corpo da requisição
+        const requestBody = {
+            input_ServiceProviderCode: MPESA_SERVICE_PROVIDER_CODE,
+            input_Amount: amount.toFixed(2).toString(),
+            input_TransactionReference: transactionReference,
+            input_CustomerMSISDN: phoneNumber,
+            input_ThirdPartyReference: transactionReference,
+            input_Country: "MZ",
+            input_Currency: "MZN",
+            input_PurchasedItems: description
+        };
 
-        // Garantir que o corpo é enviado uma única vez
-        const response = await fetch(fullUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": authHeader,
-                "Origin": origin,
-            },
-            body: JSON.stringify(requestBody), // Corpo enviado uma única vez
-        });
-
-        console.log("Resposta recebida de M-Pesa. Status:", response.status);
-
-        if (!response.ok) {
-            const textResponse = await response.text();
-            if (textResponse.includes("<!DOCTYPE html>")) {
-                console.error("Resposta da API M-Pesa em formato HTML. Verifique a URL ou os dados enviados.");
-                throw new Error("Resposta da API M-Pesa em formato HTML. Verifique a URL ou os dados enviados.");
-            }
-            const errorData = await response.json();
-            console.error("Erro na API M-Pesa:", errorData);
-            throw new Error(`Erro na API M-Pesa: ${response.status} - ${JSON.stringify(errorData)}`);
+        if (MPESA_CALLBACK_URL) {
+            requestBody.input_CallbackURL = MPESA_CALLBACK_URL;
         }
 
-        const data = await response.json();
-        console.log("Resposta JSON recebida:", JSON.stringify(data, null, 2));
+        console.log("Enviando Requisição STK Push M-Pesa:", JSON.stringify(requestBody, null, 2));
 
-        return data;
+        const response = await axios.post(MPESA_C2B_URL, requestBody, { headers });
+
+        console.log("Resposta M-Pesa STK Push Recebida:", JSON.stringify(response.data, null, 2));
+
+        return {
+            output_ResponseCode: response.data.output_ResponseCode || response.data.ResponseCode || null,
+            output_MerchantRequestID: response.data.output_MerchantRequestID || response.data.MerchantRequestID || null,
+            output_CheckoutRequestID: response.data.output_CheckoutRequestID || response.data.CheckoutRequestID || null,
+            output_CustomerMessage: response.data.output_CustomerMessage || response.data.CustomerMessage || null,
+            output_ResponseDescription: response.data.output_ResponseDescription || response.data.ResponseDescription || response.data.Message || null,
+            rawResponse: response.data
+        };
 
     } catch (error) {
-        console.error("Erro ao iniciar pagamento M-Pesa:", error);
-        throw error;
+        console.error("Erro ao iniciar STK Push M-Pesa:", error.message);
+        if (error.response) {
+            console.error("Dados da Resposta de ERRO da API M-Pesa:", JSON.stringify(error.response.data, null, 2));
+            return {
+                output_ResponseCode: error.response.data.output_ResponseCode || error.response.data.ResponseCode || 'ERR_API',
+                output_ResponseDescription: error.response.data.output_ResponseDescription || error.response.data.ResponseDescription || error.response.data.Message || 'Erro desconhecido da API M-Pesa',
+                rawResponse: error.response.data,
+                isError: true
+            };
+        }
+        throw new Error(`Erro na comunicação com M-Pesa: ${error.message}`);
     }
 }
 
-module.exports = { iniciarSTKPush };
+module.exports = {
+    iniciarSTKPush,
+    getBearerToken
+};
