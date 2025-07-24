@@ -35,14 +35,29 @@ if (!MPESA_API_KEY || !MPESA_PUBLIC_KEY || !MPESA_C2B_URL || !MPESA_SERVICE_PROV
  */
 
 function getBearerToken(apiKey, publicKey) {
+    // --- NOVOS LOGS DE DEPURAÇÃO NO INÍCIO DA FUNÇÃO ---
+    console.log('--- DEBUG Bearer Token Generation ---');
+    console.log('DEBUG: apiKey recebida (tipo):', typeof apiKey);
+    console.log('DEBUG: apiKey recebida (conteúdo inicial):', apiKey ? apiKey.substring(0, 5) + '...' + apiKey.substring(apiKey.length - 5) : 'apiKey VAZIA/NULA'); // Exibe início e fim
+    console.log('DEBUG: publicKey recebida (tipo):', typeof publicKey);
+    console.log('DEBUG: publicKey recebida (conteúdo inicial):', publicKey ? publicKey.substring(0, 10) + '...' + publicKey.substring(publicKey.length - 10) : 'publicKey VAZIA/NULA'); // Exibe início e fim
+    // --- FIM DOS NOVOS LOGS ---
+
     try {
+        // Inicializa NodeRSA com a chave pública
         const rsa = new NodeRSA(publicKey, { encryptionScheme: 'pkcs1_oaep' });
 
-        // Removendo a linha Buffer.from() para testar
-        // const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); 
+        // A linha que dá erro
+        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); // Linha 49
 
-        // Passa a apiKey diretamente para a encriptação
-        const encryptedKey = rsa.encrypt(apiKey, 'base64'); // <-- MUDANÇA AQUI!
+        // --- NOVOS LOGS APÓS A LINHA PROBLEMÁTICA ---
+        console.log('DEBUG: apiKeyBuffer criado (tipo):', typeof apiKeyBuffer);
+        console.log('DEBUG: apiKeyBuffer é um Buffer?', Buffer.isBuffer(apiKeyBuffer));
+        console.log('DEBUG: apiKeyBuffer (conteúdo hexadecimal):', apiKeyBuffer.toString('hex').substring(0, 20) + '...');
+        // --- FIM DOS NOVOS LOGS ---
+
+        // Encripta e retorna
+        const encryptedKey = rsa.encrypt(apiKeyBuffer, 'base64');
         return encryptedKey;
     } catch (error) {
         console.error("Erro ao gerar o Bearer Token:", error.message);
