@@ -212,7 +212,7 @@
     "type-is": "^1.6.18",
     "underscore": "^1.13.7",
     "undici-types": "^6.20.0",
-    "unirest": "^0.2.7",
+    "unirest": "^0.6.0",
     "unpipe": "^1.0.0",
     "uri-js": "^4.4.1",
     "util-deprecate": "^1.0.2",
