@@ -33,32 +33,22 @@ if (!MPESA_API_KEY || !MPESA_PUBLIC_KEY || !MPESA_C2B_URL || !MPESA_SERVICE_PROV
  * @param {string} publicKey A Chave Pública RSA fornecida pela M-Pesa (em formato PEM).
  * @returns {string} O Bearer Token encriptado em base64.
  */
+
 function getBearerToken(apiKey, publicKey) {
     try {
         const rsa = new NodeRSA(publicKey, { encryptionScheme: 'pkcs1_oaep' });
 
-        // --- NOVOS LOGS PARA DEBURAÇÃO AQUI ---
-        console.log('DEBUG MPESA: Tipo de apiKey ANTES de Buffer.from():', typeof apiKey);
-        console.log('DEBUG MPESA: Valor de apiKey ANTES de Buffer.from() (primeiros 10 caracteres):', apiKey ? apiKey.substring(0, 10) + '...' : 'API Key AUSENTE');
-        console.log('DEBUG MPESA: publicKey (primeiros 10 caracteres):', publicKey ? publicKey.substring(0, 10) + '...' : 'Public Key AUSENTE');
-        // --- FIM DOS NOVOS LOGS ---
-        
-        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); // <-- Esta é a linha problemática (pode ser 59 agora)
+        // Removendo a linha Buffer.from() para testar
+        // const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); 
 
-        // --- NOVOS LOGS APÓS A LINHA PROBLEMÁTICA ---
-        console.log('DEBUG MPESA: Tipo de apiKeyBuffer APÓS Buffer.from():', typeof apiKeyBuffer);
-        console.log('DEBUG MPESA: É um Buffer? (Buffer.isBuffer(apiKeyBuffer)):', Buffer.isBuffer(apiKeyBuffer));
-        console.log('DEBUG MPESA: Conteúdo de apiKeyBuffer APÓS Buffer.from() (primeiros 10 bytes):', apiKeyBuffer.toString('hex').substring(0, 20) + '...');
-        // --- FIM DOS NOVOS LOGS ---
-
-        const encryptedKey = rsa.encrypt(apiKeyBuffer, 'base64');
+        // Passa a apiKey diretamente para a encriptação
+        const encryptedKey = rsa.encrypt(apiKey, 'base64'); // <-- MUDANÇA AQUI!
         return encryptedKey;
     } catch (error) {
         console.error("Erro ao gerar o Bearer Token:", error.message);
         throw new Error("Falha ao gerar o token de autenticação M-Pesa.");
     }
 }
-
 
 
 /**
