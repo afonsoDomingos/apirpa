@@ -35,14 +35,23 @@ if (!MPESA_API_KEY || !MPESA_PUBLIC_KEY || !MPESA_C2B_URL || !MPESA_SERVICE_PROV
  */
 function getBearerToken(apiKey, publicKey) {
     try {
-        // Inicializa NodeRSA com a chave pública, especificando o esquema de encriptação
         const rsa = new NodeRSA(publicKey, { encryptionScheme: 'pkcs1_oaep' });
 
-        // Converte explicitamente a API Key para um Buffer antes de encriptar
-        // Isso resolve o erro "data must be a node Buffer"
-        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); // <--- ESTA É A LINHA 49
+        // --- NOVOS LOGS PARA DEPURAR AQUI ---
+        console.log('DEBUG MPESA: Tipo de apiKey ANTES de Buffer.from():', typeof apiKey);
+        console.log('DEBUG MPESA: Valor de apiKey ANTES de Buffer.from() (primeiros 10 caracteres):', apiKey ? apiKey.substring(0, 10) + '...' : 'API Key AUSENTE');
+        console.log('DEBUG MPESA: publicKey (primeiros 10 caracteres):', publicKey ? publicKey.substring(0, 10) + '...' : 'Public Key AUSENTE');
+        // --- FIM DOS NOVOS LOGS ---
 
-        // Encripta a API Key (agora como Buffer) e retorna em base64
+        // Esta é a linha que está a dar erro (linha 50 se não houver linhas em branco)
+        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); 
+
+        // --- NOVOS LOGS APÓS A LINHA PROBLEMÁTICA ---
+        console.log('DEBUG MPESA: Tipo de apiKeyBuffer APÓS Buffer.from():', typeof apiKeyBuffer);
+        console.log('DEBUG MPESA: É um Buffer? (Buffer.isBuffer(apiKeyBuffer)):', Buffer.isBuffer(apiKeyBuffer));
+        console.log('DEBUG MPESA: Conteúdo de apiKeyBuffer APÓS Buffer.from() (primeiros 10 bytes):', apiKeyBuffer.toString('hex').substring(0, 20) + '...');
+        // --- FIM DOS NOVOS LOGS ---
+
         const encryptedKey = rsa.encrypt(apiKeyBuffer, 'base64');
         return encryptedKey;
     } catch (error) {
