@@ -1,9 +1,7 @@
 const NodeRSA = require('node-rsa');
 const fetch = require('node-fetch'); // Importa node-fetch para fazer requisições HTTP
 
-/**
- * Gera o cabeçalho de autorização para chamadas à API M-Pesa Moçambique.
- */
+// Função para gerar o cabeçalho de autorização
 function generateMozambiqueAuthHeader() {
     const publicKeyString = process.env.MPESA_MZ_PUBLIC_KEY;
     const apiKeyValue = process.env.MPESA_MZ_API_KEY;
@@ -23,15 +21,7 @@ function generateMozambiqueAuthHeader() {
     return `Bearer ${encryptedApiKeyBase64}`;
 }
 
-/**
- * Inicia um pagamento C2B (Customer-to-Business) via M-Pesa Moçambique.
- *
- * @param {number} amount O valor a ser cobrado.
- * @param {string} customerMsisdn Número do cliente (ex: "84XXXXXXX" ou "85XXXXXXX").
- * @param {string} transactionReference Referência única da transação (use UUID).
- * @param {string} purchasedItemsDesc Descrição dos produtos ou serviços.
- * @returns {Promise<object>} Resposta da API M-Pesa.
- */
+// Função para iniciar o pagamento C2B (Customer-to-Business) via M-Pesa
 async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purchasedItemsDesc) {
     if (typeof amount !== 'number' || amount <= 0) {
         throw new Error("Erro de Validação: 'amount' deve ser um número positivo.");
@@ -84,8 +74,12 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
         });
 
         if (!response.ok) {
+            const textResponse = await response.text();
+            if (textResponse.includes("<!DOCTYPE html>")) {
+                throw new Error("Resposta da API M-Pesa em formato HTML. Verifique a URL ou os dados enviados.");
+            }
             const errorData = await response.json();
-            console.error("Erro na API M-Pesa:", errorData); // Log do erro da API
+            console.error("Erro na API M-Pesa:", errorData);
             throw new Error(`Erro na API M-Pesa: ${response.status} - ${JSON.stringify(errorData)}`);
         }
 
@@ -93,12 +87,9 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
         return data;
 
     } catch (error) {
-        console.error("Erro ao iniciar pagamento M-Pesa:", error); // Log geral de erros
+        console.error("Erro ao iniciar pagamento M-Pesa:", error);
         throw error;
     }
 }
 
-// Exporta a função com nome em português para facilitar o uso no restante do código
-module.exports = {
-    iniciarSTKPush,
-};
+module.exports = { iniciarSTKPush };

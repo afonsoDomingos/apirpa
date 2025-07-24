@@ -16,11 +16,11 @@ router.post("/mpesa/callback", mpesaCallbackHandler);
  * Criar um pagamento
  * Essa rota exige que o usuário esteja autenticado (verificado pelo token de autenticação)
  */
+// Criar pagamento
 router.post("/", verificarToken, async (req, res) => {
     const { pacote, formaPagamento, preco, telefone, dadosCartao, status } = req.body;
-    const usuarioId = req.usuario.id; // ID do usuário autenticado
+    const usuarioId = req.usuario.id;
 
-    // Validação básica dos dados recebidos na requisição
     if (!pacote || !formaPagamento || preco === undefined || preco === null) {
         return res.status(400).json({
             sucesso: false,
@@ -28,12 +28,10 @@ router.post("/", verificarToken, async (req, res) => {
         });
     }
 
-    // Validação para forma de pagamento 'Cartão' (se os dados do cartão são fornecidos)
     if (formaPagamento === "Cartão" && !dadosCartao?.numero) {
         return res.status(400).json({ sucesso: false, mensagem: "Dados do cartão ausentes." });
     }
 
-    // Validação para forma de pagamento 'M-Pesa' (verificando se o telefone foi fornecido)
     if (formaPagamento === "M-Pesa" && !telefone) {
         return res.status(400).json({ sucesso: false, mensagem: "Telefone ausente." });
     }
@@ -41,31 +39,22 @@ router.post("/", verificarToken, async (req, res) => {
     try {
         let mpesaInfo = null;
 
-        // Caso a forma de pagamento seja M-Pesa, inicia a transação com a M-Pesa
         if (formaPagamento === "M-Pesa") {
             const accountReference = `ASSINATURA-${usuarioId}-${Date.now()}`;
 
             try {
-                // Chama a função para iniciar o pagamento via STK Push (M-Pesa)
-                const respostaSTK = await iniciarSTKPush(
-                    preco,
-                    telefone,
-                    accountReference,
-                    `Pagamento de assinatura ${pacote}`
-                );
+                const respostaSTK = await iniciarSTKPush(preco, telefone, accountReference, `Pagamento de assinatura ${pacote}`);
 
-                // Se o pagamento foi iniciado com sucesso, a resposta da M-Pesa será processada
-                if (respostaSTK.output_ResponseCode === "0") {
+                if (respostaSTK.output_ResponseCode === "INS-0") {
                     mpesaInfo = {
                         merchantRequestId: respostaSTK.output_MerchantRequestID,
                         checkoutRequestId: respostaSTK.output_CheckoutRequestID,
                         responseCode: respostaSTK.output_ResponseCode,
                         customerMessage: respostaSTK.output_CustomerMessage,
-                        status: "pendente", // Inicialmente, status é 'pendente'
+                        status: "pendente",
                         accountReference: accountReference,
                     };
 
-                    // Cria o novo pagamento no banco de dados com o status 'pendente' e dados da M-Pesa
                     const novoPagamento = new Pagamento({
                         pacote,
                         formaPagamento,
@@ -76,10 +65,8 @@ router.post("/", verificarToken, async (req, res) => {
                         mpesa: mpesaInfo,
                     });
 
-                    // Salva o pagamento
                     const pagamentoSalvo = await novoPagamento.save();
 
-                    // Retorna uma resposta com o sucesso da transação e os dados relevantes da M-Pesa
                     return res.json({
                         sucesso: true,
                         mensagem: "Solicitação M-Pesa enviada com sucesso! Aguardando confirmação do usuário.",
@@ -97,7 +84,6 @@ router.post("/", verificarToken, async (req, res) => {
                         mpesaResponse: respostaSTK
                     });
                 }
-
             } catch (error) {
                 console.error("Erro no fluxo do STK Push:", error);
                 return res.status(500).json({
@@ -107,19 +93,17 @@ router.post("/", verificarToken, async (req, res) => {
             }
         }
 
-        // Caso a forma de pagamento não seja M-Pesa, trata como outros pagamentos
         const novoPagamento = new Pagamento({
             pacote,
             formaPagamento,
             preco,
             telefone: telefone || null,
             cartao: dadosCartao || null,
-            status: status || "pago", // Define o status do pagamento (pago ou pendente)
+            status: status || "pago",
             usuario: usuarioId,
             mpesa: mpesaInfo,
         });
 
-        // Salva o pagamento no banco de dados
         const pagamentoSalvo = await novoPagamento.save();
 
         return res.json({
@@ -133,6 +117,7 @@ router.post("/", verificarToken, async (req, res) => {
         return res.status(500).json({ sucesso: false, mensagem: "Erro interno do servidor." });
     }
 });
+
 
 /**
  * Rota para consultar o status de um pagamento pelo ID.

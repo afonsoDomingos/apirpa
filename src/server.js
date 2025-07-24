@@ -1,5 +1,12 @@
 require('dotenv').config();
 
+const apiKey = process.env.MPESA_API_KEY;
+const publicKey = process.env.MPESA_PUBLIC_KEY;
+const resourceUrl = process.env.MPESA_RESOURCE_URL;
+
+console.log(apiKey, publicKey, resourceUrl); // Apenas para garantir que as variáveis estão sendo carregadas corretamente
+
+
 const express = require('express');
 const app = express();
 const cors = require('cors');
