@@ -7,9 +7,11 @@ function generateMozambiqueAuthHeader() {
     const apiKeyValue = process.env.MPESA_MZ_API_KEY;
 
     if (!publicKeyString) {
+        console.error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_PUBLIC_KEY' faltando.");
         throw new Error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_PUBLIC_KEY' faltando.");
     }
     if (!apiKeyValue) {
+        console.error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_API_KEY' faltando.");
         throw new Error("Erro de Configuração: Variável de ambiente 'MPESA_MZ_API_KEY' faltando.");
     }
 
@@ -18,21 +20,28 @@ function generateMozambiqueAuthHeader() {
 
     const encryptedApiKeyBase64 = key.encrypt(apiKeyValue, 'base64', 'utf8', 'pkcs1_v1_5');
 
+    console.log("Cabeçalho de autorização gerado com sucesso.");
     return `Bearer ${encryptedApiKeyBase64}`;
 }
 
 // Função para iniciar o pagamento C2B (Customer-to-Business) via M-Pesa
 async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purchasedItemsDesc) {
+    console.log("Iniciando o pagamento C2B via M-Pesa...");
+
     if (typeof amount !== 'number' || amount <= 0) {
+        console.error("Erro de Validação: 'amount' deve ser um número positivo.");
         throw new Error("Erro de Validação: 'amount' deve ser um número positivo.");
     }
     if (!customerMsisdn || !/^258(84|85)\d{7}$/.test(customerMsisdn)) {
+        console.error("Erro de Validação: 'customerMsisdn' inválido.");
         throw new Error("Erro de Validação: 'customerMsisdn' inválido.");
     }
     if (!transactionReference || transactionReference.trim() === '') {
+        console.error("Erro de Validação: 'transactionReference' não pode estar vazio.");
         throw new Error("Erro de Validação: 'transactionReference' não pode estar vazio.");
     }
     if (!purchasedItemsDesc || purchasedItemsDesc.trim() === '') {
+        console.error("Erro de Validação: 'purchasedItemsDesc' não pode estar vazio.");
         throw new Error("Erro de Validação: 'purchasedItemsDesc' não pode estar vazio.");
     }
 
@@ -41,10 +50,22 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
     const origin = process.env.MPESA_MZ_ORIGIN;
     const serviceProviderCode = process.env.MPESA_MZ_SERVICE_PROVIDER_CODE;
 
-    if (!baseUrl) throw new Error("Variável 'MPESA_MZ_BASE_URL' faltando.");
-    if (!contextValue) throw new Error("Variável 'MPESA_MZ_CONTEXT_VALUE' faltando.");
-    if (!origin) throw new Error("Variável 'MPESA_MZ_ORIGIN' faltando.");
-    if (!serviceProviderCode) throw new Error("Variável 'MPESA_MZ_SERVICE_PROVIDER_CODE' faltando.");
+    if (!baseUrl) {
+        console.error("Erro de Configuração: Variável 'MPESA_MZ_BASE_URL' faltando.");
+        throw new Error("Variável 'MPESA_MZ_BASE_URL' faltando.");
+    }
+    if (!contextValue) {
+        console.error("Erro de Configuração: Variável 'MPESA_MZ_CONTEXT_VALUE' faltando.");
+        throw new Error("Variável 'MPESA_MZ_CONTEXT_VALUE' faltando.");
+    }
+    if (!origin) {
+        console.error("Erro de Configuração: Variável 'MPESA_MZ_ORIGIN' faltando.");
+        throw new Error("Variável 'MPESA_MZ_ORIGIN' faltando.");
+    }
+    if (!serviceProviderCode) {
+        console.error("Erro de Configuração: Variável 'MPESA_MZ_SERVICE_PROVIDER_CODE' faltando.");
+        throw new Error("Variável 'MPESA_MZ_SERVICE_PROVIDER_CODE' faltando.");
+    }
 
     try {
         const authHeader = generateMozambiqueAuthHeader();
@@ -63,7 +84,9 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
             "input_PurchasedItemsDesc": purchasedItemsDesc
         };
 
-        // Corrigindo o erro do body usado várias vezes
+        console.log("Corpo da requisição:", JSON.stringify(requestBody, null, 2)); // Log do corpo da requisição
+
+        // Garantir que o corpo é enviado uma única vez
         const response = await fetch(fullUrl, {
             method: "POST",
             headers: {
@@ -71,12 +94,15 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
                 "Authorization": authHeader,
                 "Origin": origin,
             },
-            body: JSON.stringify(requestBody), // Garantir que o corpo é enviado uma única vez
+            body: JSON.stringify(requestBody), // Corpo enviado uma única vez
         });
+
+        console.log("Resposta recebida de M-Pesa. Status:", response.status);
 
         if (!response.ok) {
             const textResponse = await response.text();
             if (textResponse.includes("<!DOCTYPE html>")) {
+                console.error("Resposta da API M-Pesa em formato HTML. Verifique a URL ou os dados enviados.");
                 throw new Error("Resposta da API M-Pesa em formato HTML. Verifique a URL ou os dados enviados.");
             }
             const errorData = await response.json();
@@ -85,6 +111,8 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
         }
 
         const data = await response.json();
+        console.log("Resposta JSON recebida:", JSON.stringify(data, null, 2));
+
         return data;
 
     } catch (error) {
