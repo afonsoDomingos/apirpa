@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const bcryptjs = require('bcryptjs'); // <-- Esta linha é crucial!
 const Usuario = require('../models/authModel');
 //const verificarToken = require('../middleware/verificarToken'); // Certifique-se de ter esse middleware
 const verificarToken = require('../middleware/authMiddleware');
