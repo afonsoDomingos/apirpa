@@ -205,14 +205,14 @@
     "tar": "^6.2.1",
     "toidentifier": "^1.0.1",
     "toposort-class": "^1.0.1",
-    "tough-cookie": "^2.5.0",
+    "tough-cookie": "^5.1.2",
     "tr46": "^5.1.1",
     "tunnel-agent": "^0.6.0",
     "tweetnacl": "^0.14.5",
     "type-is": "^1.6.18",
     "underscore": "^1.13.7",
     "undici-types": "^6.20.0",
-    "unirest": "^0.6.0",
+    "unirest": "^0.2.7",
     "unpipe": "^1.0.0",
     "uri-js": "^4.4.1",
     "util-deprecate": "^1.0.2",
@@ -245,5 +245,5 @@
     "url": "https://github.com/afonsoDomingos/apirpa/issues"
   },
   "homepage": "https://github.com/afonsoDomingos/apirpa#readme",
-  "description": ""
+  "description": "API para RPA"
 }
