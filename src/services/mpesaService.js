@@ -60,6 +60,8 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
         const authHeader = generateMozambiqueAuthHeader();
         const fullUrl = `${baseUrl}/${contextValue}/c2bPayment/singleStage/`;
 
+        console.log("Enviando requisição para M-Pesa:", fullUrl); // Log da URL de requisição
+
         const requestBody = {
             "input_Amount": amount.toString(),
             "input_Country": "MOZ",
@@ -83,6 +85,7 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
 
         if (!response.ok) {
             const errorData = await response.json();
+            console.error("Erro na API M-Pesa:", errorData); // Log do erro da API
             throw new Error(`Erro na API M-Pesa: ${response.status} - ${JSON.stringify(errorData)}`);
         }
 
@@ -90,7 +93,7 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
         return data;
 
     } catch (error) {
-        console.error("Erro ao iniciar pagamento M-Pesa:", error);
+        console.error("Erro ao iniciar pagamento M-Pesa:", error); // Log geral de erros
         throw error;
     }
 }

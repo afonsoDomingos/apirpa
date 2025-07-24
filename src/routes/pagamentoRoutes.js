@@ -1,4 +1,3 @@
-// routes/pagamentos.js
 const express = require("express");
 const router = express.Router();
 const Pagamento = require("../models/pagamentoModel");
@@ -7,14 +6,21 @@ const verificarToken = require("../middleware/authMiddleware");
 const { mpesaCallbackHandler } = require("../controllers/mpesaCallbackController");
 const { iniciarSTKPush } = require("../services/mpesaService");
 
-// Rota pública para callback da M-Pesa (sem autenticação)
+/**
+ * Rota pública para o callback da M-Pesa.
+ * Esta rota será chamada pela M-Pesa para notificar o sistema sobre o status do pagamento.
+ */
 router.post("/mpesa/callback", mpesaCallbackHandler);
 
-// Criar um pagamento (requer login)
+/**
+ * Criar um pagamento
+ * Essa rota exige que o usuário esteja autenticado (verificado pelo token de autenticação)
+ */
 router.post("/", verificarToken, async (req, res) => {
     const { pacote, formaPagamento, preco, telefone, dadosCartao, status } = req.body;
-    const usuarioId = req.usuario.id;
+    const usuarioId = req.usuario.id; // ID do usuário autenticado
 
+    // Validação básica dos dados recebidos na requisição
     if (!pacote || !formaPagamento || preco === undefined || preco === null) {
         return res.status(400).json({
             sucesso: false,
@@ -22,10 +28,12 @@ router.post("/", verificarToken, async (req, res) => {
         });
     }
 
+    // Validação para forma de pagamento 'Cartão' (se os dados do cartão são fornecidos)
     if (formaPagamento === "Cartão" && !dadosCartao?.numero) {
         return res.status(400).json({ sucesso: false, mensagem: "Dados do cartão ausentes." });
     }
 
+    // Validação para forma de pagamento 'M-Pesa' (verificando se o telefone foi fornecido)
     if (formaPagamento === "M-Pesa" && !telefone) {
         return res.status(400).json({ sucesso: false, mensagem: "Telefone ausente." });
     }
@@ -33,10 +41,12 @@ router.post("/", verificarToken, async (req, res) => {
     try {
         let mpesaInfo = null;
 
+        // Caso a forma de pagamento seja M-Pesa, inicia a transação com a M-Pesa
         if (formaPagamento === "M-Pesa") {
             const accountReference = `ASSINATURA-${usuarioId}-${Date.now()}`;
 
             try {
+                // Chama a função para iniciar o pagamento via STK Push (M-Pesa)
                 const respostaSTK = await iniciarSTKPush(
                     preco,
                     telefone,
@@ -44,16 +54,18 @@ router.post("/", verificarToken, async (req, res) => {
                     `Pagamento de assinatura ${pacote}`
                 );
 
+                // Se o pagamento foi iniciado com sucesso, a resposta da M-Pesa será processada
                 if (respostaSTK.output_ResponseCode === "0") {
                     mpesaInfo = {
                         merchantRequestId: respostaSTK.output_MerchantRequestID,
                         checkoutRequestId: respostaSTK.output_CheckoutRequestID,
                         responseCode: respostaSTK.output_ResponseCode,
                         customerMessage: respostaSTK.output_CustomerMessage,
-                        status: "pendente",
+                        status: "pendente", // Inicialmente, status é 'pendente'
                         accountReference: accountReference,
                     };
 
+                    // Cria o novo pagamento no banco de dados com o status 'pendente' e dados da M-Pesa
                     const novoPagamento = new Pagamento({
                         pacote,
                         formaPagamento,
@@ -64,8 +76,10 @@ router.post("/", verificarToken, async (req, res) => {
                         mpesa: mpesaInfo,
                     });
 
+                    // Salva o pagamento
                     const pagamentoSalvo = await novoPagamento.save();
 
+                    // Retorna uma resposta com o sucesso da transação e os dados relevantes da M-Pesa
                     return res.json({
                         sucesso: true,
                         mensagem: "Solicitação M-Pesa enviada com sucesso! Aguardando confirmação do usuário.",
@@ -93,18 +107,19 @@ router.post("/", verificarToken, async (req, res) => {
             }
         }
 
-        // Outras formas de pagamento
+        // Caso a forma de pagamento não seja M-Pesa, trata como outros pagamentos
         const novoPagamento = new Pagamento({
             pacote,
             formaPagamento,
             preco,
             telefone: telefone || null,
             cartao: dadosCartao || null,
-            status: status || "pago",
+            status: status || "pago", // Define o status do pagamento (pago ou pendente)
             usuario: usuarioId,
             mpesa: mpesaInfo,
         });
 
+        // Salva o pagamento no banco de dados
         const pagamentoSalvo = await novoPagamento.save();
 
         return res.json({
@@ -119,111 +134,131 @@ router.post("/", verificarToken, async (req, res) => {
     }
 });
 
-// Listar pagamentos do usuário logado com validade e status dinâmico
-router.get("/meus", verificarToken, async (req, res) => {
-    try {
-        const usuarioId = req.usuario.id;
-        const pagamentos = await Pagamento.find({ usuario: usuarioId }).sort({ data: -1 });
-
-        const hoje = new Date();
-
-        const pagamentosComValidade = pagamentos.map(pag => {
-            const validade = new Date(pag.data);
-            const nomePacote = pag.pacote?.toLowerCase().trim();
-            const diasDeValidade = nomePacote === "anual" ? 365 : 30;
-
-            validade.setDate(validade.getDate() + diasDeValidade);
-
-            const diffMs = validade - hoje;
-            const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-            const expirado = diasRestantes < 0;
-            const status = expirado ? 'expirado' : 'pago';
-
-            return {
-                ...pag._doc,
-                validade,
-                diasRestantes,
-                status
-            };
-        });
-
-        res.json({
-            sucesso: true,
-            total: pagamentos.length,
-            pagamentos: pagamentosComValidade,
-        });
-    } catch (error) {
-        console.error("Erro ao buscar pagamentos do usuário:", error);
-        res.status(500).json({
-            sucesso: false,
-            mensagem: "Erro ao buscar pagamentos.",
-        });
-    }
-});
-
-// Buscar pagamento por ID (só dono ou admin)
+/**
+ * Rota para consultar o status de um pagamento pelo ID.
+ * A consulta do status pode ser útil para verificar o pagamento realizado via M-Pesa ou cartão.
+ */
 router.get("/:id", verificarToken, async (req, res) => {
+    const pagamentoId = req.params.id;
+
     try {
-        const pagamento = await Pagamento.findById(req.params.id);
+        const pagamento = await Pagamento.findById(pagamentoId).populate("usuario");
+
         if (!pagamento) {
-            return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
+            return res.status(404).json({
+                sucesso: false,
+                mensagem: "Pagamento não encontrado.",
+            });
         }
 
-        if (pagamento.usuario.toString() !== req.usuario.id && req.usuario.role !== "admin") {
-            return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
-        }
+        return res.json({
+            sucesso: true,
+            pagamento,
+        });
 
-        res.json({ sucesso: true, pagamento: pagamento.toObject() });
     } catch (error) {
-        console.error("Erro ao buscar pagamento:", error);
-        res.status(500).json({ sucesso: false, mensagem: "Erro ao buscar pagamento." });
+        console.error("Erro ao consultar pagamento:", error);
+        return res.status(500).json({
+            sucesso: false,
+            mensagem: "Erro interno ao consultar pagamento.",
+        });
     }
 });
 
-// Excluir pagamento (admin)
+/**
+ * Rota para cancelar um pagamento (caso o status ainda seja 'pendente').
+ * Esta rota pode ser útil caso o usuário queira desistir do pagamento antes de ser processado.
+ */
 router.delete("/:id", verificarToken, async (req, res) => {
-    if (req.usuario.role !== "admin") {
-        return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
-    }
+    const pagamentoId = req.params.id;
 
     try {
-        const pagamentoRemovido = await Pagamento.findByIdAndDelete(req.params.id);
-        if (!pagamentoRemovido) {
-            return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
+        const pagamento = await Pagamento.findById(pagamentoId);
+
+        if (!pagamento) {
+            return res.status(404).json({
+                sucesso: false,
+                mensagem: "Pagamento não encontrado.",
+            });
         }
-        res.json({ sucesso: true, mensagem: "Pagamento removido com sucesso." });
+
+        if (pagamento.status !== "pendente") {
+            return res.status(400).json({
+                sucesso: false,
+                mensagem: "Não é possível cancelar um pagamento que já foi processado.",
+            });
+        }
+
+        // Atualiza o status para 'cancelado'
+        pagamento.status = "cancelado";
+        await pagamento.save();
+
+        return res.json({
+            sucesso: true,
+            mensagem: "Pagamento cancelado com sucesso.",
+            pagamento,
+        });
+
     } catch (error) {
-        console.error("Erro ao remover pagamento:", error);
-        res.status(500).json({ sucesso: false, mensagem: "Erro ao remover pagamento." });
+        console.error("Erro ao cancelar pagamento:", error);
+        return res.status(500).json({
+            sucesso: false,
+            mensagem: "Erro interno ao cancelar pagamento.",
+        });
     }
 });
 
-// Verificar assinatura ativa
-router.get("/assinatura/ativa", verificarToken, async (req, res) => {
+/**
+ * Rota para realizar o pagamento finalizado via M-Pesa após a confirmação de pagamento.
+ * Esta rota pode ser usada para confirmar que o pagamento foi bem-sucedido e foi processado pela M-Pesa.
+ */
+router.put("/confirmacao/:id", verificarToken, async (req, res) => {
+    const pagamentoId = req.params.id;
+    const { merchantRequestId, checkoutRequestId, status } = req.body;
+
     try {
-        const usuarioId = req.usuario.id;
+        const pagamento = await Pagamento.findById(pagamentoId);
 
-        const pagamentoMaisRecente = await Pagamento.findOne({ usuario: usuarioId }).sort({ data: -1 });
-
-        if (!pagamentoMaisRecente) {
-            return res.json({ ativa: false, diasRestantes: null });
+        if (!pagamento) {
+            return res.status(404).json({
+                sucesso: false,
+                mensagem: "Pagamento não encontrado.",
+            });
         }
 
-        const nomePacote = pagamentoMaisRecente.pacote?.toLowerCase().trim();
-        const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+        // Se o pagamento já foi confirmado, não há necessidade de confirmar novamente
+        if (pagamento.status !== "pendente") {
+            return res.status(400).json({
+                sucesso: false,
+                mensagem: "Este pagamento já foi confirmado ou cancelado.",
+            });
+        }
 
-        const validade = new Date(pagamentoMaisRecente.data);
-        validade.setDate(validade.getDate() + diasDeValidade);
+        // Atualiza o status do pagamento com base na resposta da M-Pesa
+        if (status === "sucesso") {
+            pagamento.status = "pago";
+        } else {
+            pagamento.status = "falhou";
+        }
 
-        const hoje = new Date();
-        const diffMs = validade - hoje;
-        const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        const assinaturaAtiva = diasRestantes >= 0;
+        pagamento.mpesa.merchantRequestId = merchantRequestId;
+        pagamento.mpesa.checkoutRequestId = checkoutRequestId;
+        pagamento.mpesa.status = status;
 
-        return res.json({ ativa: assinaturaAtiva, diasRestantes });
+        await pagamento.save();
+
+        return res.json({
+            sucesso: true,
+            mensagem: `Pagamento ${status === "sucesso" ? "realizado" : "falhou"}`,
+            pagamento,
+        });
+
     } catch (error) {
-        console.error("Erro ao verificar assinatura:", error);
-        res.status(500).json({ sucesso: false, mensagem: "Erro ao verificar assinatura." });
+        console.error("Erro ao confirmar pagamento:", error);
+        return res.status(500).json({
+            sucesso: false,
+            mensagem: "Erro interno ao confirmar pagamento.",
+        });
     }
 });
 
