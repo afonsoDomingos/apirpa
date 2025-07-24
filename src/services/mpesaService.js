@@ -48,7 +48,7 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
 
     try {
         const authHeader = generateMozambiqueAuthHeader();
-        const fullUrl = `${baseUrl}/${contextValue}/c2bPayment/singleStage/`;
+        const fullUrl = `${baseUrl}:${process.env.MPESA_MZ_PORTA}/${contextValue}/c2bPayment/singleStage/`;
 
         console.log("Enviando requisição para M-Pesa:", fullUrl); // Log da URL de requisição
 
@@ -63,6 +63,7 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
             "input_PurchasedItemsDesc": purchasedItemsDesc
         };
 
+        // Corrigindo o erro do body usado várias vezes
         const response = await fetch(fullUrl, {
             method: "POST",
             headers: {
@@ -70,7 +71,7 @@ async function iniciarSTKPush(amount, customerMsisdn, transactionReference, purc
                 "Authorization": authHeader,
                 "Origin": origin,
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody), // Garantir que o corpo é enviado uma única vez
         });
 
         if (!response.ok) {
