@@ -22,7 +22,8 @@ console.log('APP_ORIGIN:', APP_ORIGIN ? 'Carregada' : 'NÃO CARREGADA');
 // Verificação de variáveis de ambiente essenciais
 if (!MPESA_API_KEY || !MPESA_PUBLIC_KEY || !MPESA_C2B_URL || !MPESA_SERVICE_PROVIDER_CODE || !MPESA_CALLBACK_URL || !APP_ORIGIN) {
     console.error("ERRO: Variáveis de ambiente M-Pesa essenciais em falta no mpesaService. Verifique seu arquivo .env e no Render.");
-    process.exit(1); // Encerra o processo se as variáveis não estiverem configuradas
+    // Não vamos encerrar o processo aqui para que você possa ver outros logs
+    // process.exit(1); 
 }
 
 /**
@@ -39,7 +40,7 @@ function getBearerToken(apiKey, publicKey) {
 
         // Converte explicitamente a API Key para um Buffer antes de encriptar
         // Isso resolve o erro "data must be a node Buffer"
-        const apiKeyBuffer = Buffer.from(apiKey, 'utf8');
+        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); // <--- ESTA É A LINHA 49
 
         // Encripta a API Key (agora como Buffer) e retorna em base64
         const encryptedKey = rsa.encrypt(apiKeyBuffer, 'base64');
