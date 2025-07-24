@@ -37,14 +37,13 @@ function getBearerToken(apiKey, publicKey) {
     try {
         const rsa = new NodeRSA(publicKey, { encryptionScheme: 'pkcs1_oaep' });
 
-        // --- NOVOS LOGS PARA DEPURAR AQUI ---
+        // --- NOVOS LOGS PARA DEBURAÇÃO AQUI ---
         console.log('DEBUG MPESA: Tipo de apiKey ANTES de Buffer.from():', typeof apiKey);
         console.log('DEBUG MPESA: Valor de apiKey ANTES de Buffer.from() (primeiros 10 caracteres):', apiKey ? apiKey.substring(0, 10) + '...' : 'API Key AUSENTE');
         console.log('DEBUG MPESA: publicKey (primeiros 10 caracteres):', publicKey ? publicKey.substring(0, 10) + '...' : 'Public Key AUSENTE');
         // --- FIM DOS NOVOS LOGS ---
-
-        // Esta é a linha que está a dar erro (linha 50 se não houver linhas em branco)
-        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); 
+        
+        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); // <-- Esta é a linha problemática (pode ser 59 agora)
 
         // --- NOVOS LOGS APÓS A LINHA PROBLEMÁTICA ---
         console.log('DEBUG MPESA: Tipo de apiKeyBuffer APÓS Buffer.from():', typeof apiKeyBuffer);
@@ -59,6 +58,8 @@ function getBearerToken(apiKey, publicKey) {
         throw new Error("Falha ao gerar o token de autenticação M-Pesa.");
     }
 }
+
+
 
 /**
  * Inicia uma transação STK Push (C2B) via API M-Pesa.
