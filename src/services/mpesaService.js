@@ -34,7 +34,11 @@ if (!MPESA_API_KEY || !MPESA_PUBLIC_KEY || !MPESA_C2B_URL || !MPESA_SERVICE_PROV
 function getBearerToken(apiKey, publicKey) {
     try {
         const rsa = new NodeRSA(publicKey, { encryptionScheme: 'pkcs1_oaep' });
-        const encryptedKey = rsa.encrypt(apiKey, 'base64');
+
+        // Converte explicitamente a API Key para um Buffer antes de encriptar
+        const apiKeyBuffer = Buffer.from(apiKey, 'utf8'); // <-- MUDANÇA AQUI!
+
+        const encryptedKey = rsa.encrypt(apiKeyBuffer, 'base64'); // <-- Usar o Buffer aqui!
         return encryptedKey;
     } catch (error) {
         console.error("Erro ao gerar o Bearer Token:", error.message);
