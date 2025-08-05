@@ -2,7 +2,8 @@
 require('dotenv').config(); // Carrega as variáveis de ambiente do .env
 
 const apiKey = process.env.MPESA_API_KEY;
-const publicKey = process.env.MPESA_PUBLIC_KEY;
+
+const publicKey = process.env.MPESA_PUBLIC_KEY.replace(/\\n/g, '\n');
 const mpesaC2bUrl = process.env.MPESA_C2B_URL; // Usando o nome correto da variável
 
 console.log("Variáveis de ambiente carregadas:");
