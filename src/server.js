@@ -1,104 +1,90 @@
-// server.js
-require('dotenv').config(); // Carrega as variáveis de ambiente do .env
+require('dotenv').config(); // Carrega variáveis do .env no process.env
 
+const express = require('express');
+const cors = require('cors');
+const connectDB = require('./config/db'); // Conexão MongoDB
+const Documento = require('./models/documentoModel');
+
+// Importação dos routers
+const chatbotRoute = require('./routes/chatbot');
+const documentoRoutes = require('./routes/documentoRoutes');
+const authRoutes = require('./routes/authRoutes');
+const solicitacoesRouter = require('./routes/solicitacoesRoutes');
+const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes');
+const pagamentoRoutes = require('./routes/pagamentoRoutes');
+const { mpesaCallbackHandler } = require('./controllers/mpesaCallbackController');
+
+const app = express();
+const port = process.env.PORT || 5000;
+
+// Variáveis ambiente para M-Pesa
 const apiKey = process.env.MPESA_API_KEY;
-
-const publicKey = process.env.MPESA_PUBLIC_KEY.replace(/\\n/g, '\n');
-const mpesaC2bUrl = process.env.MPESA_C2B_URL; // Usando o nome correto da variável
+const publicKey = process.env.MPESA_PUBLIC_KEY?.replace(/\\n/g, '\n');
+const mpesaC2bUrl = process.env.MPESA_C2B_URL;
 
 console.log("Variáveis de ambiente carregadas:");
 console.log(`API Key: ${apiKey ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log(`Public Key: ${publicKey ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log(`M-Pesa C2B URL: ${mpesaC2bUrl ? 'Carregada' : 'NÃO CARREGADA'}`);
 
-
-const express = require('express');
-const app = express();
-const cors = require('cors');
-const connectDB = require('./config/db'); // Assumindo que você tem este arquivo para conexão com o DB
-const Documento = require('./models/documentoModel'); // Assumindo que você tem este modelo
-
-// Importar rotas
-const chatbotRoute = require('./routes/chatbot'); // Exemplo de rota existente
-const documentoRoutes = require('./routes/documentoRoutes.js'); // Exemplo de rota existente
-const authRoutes = require('./routes/authRoutes.js'); // Exemplo de rota existente
-const solicitacoesRouter = require('./routes/solicitacoesRoutes'); // Exemplo de rota existente
-const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes.js'); // Exemplo de rota existente
-const pagamentoRoutes = require("./routes/pagamentoRoutes"); // Suas rotas de pagamento
-const { mpesaCallbackHandler } = require("./controllers/mpesaCallbackController"); // Controlador de callback M-Pesa
-
-const port = process.env.PORT || 5000;
-
-// ⚠️ Middleware JSON - deve vir ANTES de usar rotas com req.body JSON
+// Middlewares
 app.use(express.json());
 
-// CORS
+// Configuração CORS - ajuste conforme seu front
 const allowedOrigins = ['https://recuperaaqui.vercel.app', 'http://localhost:3000'];
 app.use(cors({
-    origin: function (origin, callback) {
-        // Permite requisições sem 'origin' (ex: de ferramentas como Postman ou curl)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE','OPTIONS'],
-    credentials: true,
-    optionsSuccessStatus: 200,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // Requisições sem origin (Postman, curl)
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  optionsSuccessStatus: 200,
 }));
 
-// Rota simples para testar a API
+// Rota raiz para teste simples
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
-// Rota API do Chatbot (exemplo)
+// Rotas organizadas para evitar conflito e 404
 app.use('/api/chatbot', chatbotRoute);
+app.use('/api/documentos', documentoRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/solicitacoes', solicitacoesRouter);
+app.use('/api/documentosguardados', documentosGuardadosRoutes);
+app.use('/api/pagamentos', pagamentoRoutes);
 
-// --- Rota de Callback da M-Pesa ---
-// Esta rota deve ser acessível publicamente pela M-Pesa.
-// O middleware `express.raw` é crucial aqui para lidar com o corpo da requisição
-// que pode não ser estritamente 'application/json' ou ser um Buffer.
-// O `mpesaCallbackHandler` dentro do controlador foi ajustado para parsear este Buffer.
-// O caminho '/api/pagamentos/mpesa/callback' DEVE corresponder à sua MPESA_CALLBACK_URL no .env
+// Rota de callback da M-Pesa (usando express.raw para corpo em buffer)
 app.post(
-    "/api/pagamentos/mpesa/callback",
-    express.raw({ type: "*/*" }), // Aceita qualquer tipo de conteúdo como buffer
-    mpesaCallbackHandler
+  "/api/pagamentos/mpesa/callback",
+  express.raw({ type: "*/*" }),
+  mpesaCallbackHandler
 );
 
-// Conectar ao MongoDB e iniciar servidor
-connectDB() // Assume que connectDB é uma função que retorna uma Promise
-    .then(() => {
-        console.log('Conectado ao MongoDB com sucesso!');
+// Endpoint para contar documentos reportados
+app.get('/api/documentos/count', async (req, res) => {
+  try {
+    const count = await Documento.countDocuments({ origem: 'reportado' });
+    res.json({ count });
+  } catch (error) {
+    console.error('Erro ao contar documentos', error);
+    res.status(500).json({ message: 'Erro ao contar documentos' });
+  }
+});
 
-        // --- Outras rotas da sua aplicação ---
-        app.use('/api', documentoRoutes); 
-        app.use('/api/auth', authRoutes);
-        app.use('/api', solicitacoesRouter);
-        app.use('/api/documentosguardados', documentosGuardadosRoutes);
-        
-        // Suas rotas de pagamento (inclui a lógica para iniciar M-Pesa C2B)
-        app.use('/api/pagamentos', pagamentoRoutes);
-
-        // Contador de documentos reportados (exemplo)
-        app.get('/api/documentos/count', async (req, res) => {
-            try {
-                const count = await Documento.countDocuments({ origem: 'reportado' });
-                res.json({ count });
-            } catch (error) {
-                console.error('Erro ao contar documentos', error);
-                res.status(500).json({ message: 'Erro ao contar documentos' });
-            }
-        });
-
-        // Iniciar servidor
-        app.listen(port, () => {
-            console.log(`Servidor rodando na porta ${port}`);
-            console.log(`Aguardando requisições...`);
-        });
-    })
-    .catch(err => {
-        console.error('Erro ao conectar ao banco de dados:', err);
-        process.exit(1); // Encerra a aplicação se a conexão ao DB falhar
+// Conectar ao banco e iniciar o servidor
+connectDB()
+  .then(() => {
+    console.log('Conectado ao MongoDB com sucesso!');
+    app.listen(port, () => {
+      console.log(`Servidor rodando na porta ${port}`);
+      console.log(`Aguardando requisições...`);
     });
+  })
+  .catch(err => {
+    console.error('Erro ao conectar ao banco de dados:', err);
+    process.exit(1);
+  });
