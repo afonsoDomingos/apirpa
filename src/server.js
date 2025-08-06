@@ -6,7 +6,7 @@ const connectDB = require('./config/db'); // Conexão MongoDB
 const Documento = require('./models/documentoModel');
 
 // Importação dos routers
-const chatbotRoute = require('./routes/chatbot');
+const chatbotRoutes = require('./routes/chatbot');
 const documentoRoutes = require('./routes/documentoRoutes');
 const authRoutes = require('./routes/authRoutes');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
@@ -50,7 +50,7 @@ app.use(cors({
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
 // Rotas organizadas para evitar conflito e 404
-app.use('/api/chatbot', chatbotRoute);
+app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/documentos', documentoRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/solicitacoes', solicitacoesRouter);
