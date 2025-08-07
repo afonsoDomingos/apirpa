@@ -51,9 +51,9 @@ app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
 // Rotas organizadas para evitar conflito e 404
 app.use('/api/chatbot', chatbotRoutes);
-app.use('/api/documentos', documentoRoutes);
+app.use('/api', documentoRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/solicitacoes', solicitacoesRouter);
+app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
 app.use('/api/pagamentos', pagamentoRoutes);
 
