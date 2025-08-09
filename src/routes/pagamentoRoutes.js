@@ -38,7 +38,7 @@ router.post("/", verificarToken, async (req, res) => {
         let pagamentoSalvo;
 
         if (formaPagamento === "M-Pesa") {
-            const accountReference = `ASSINATURA-${usuarioId}-${Date.now()}`;
+            const accountReference = `ASSINATURA${usuarioId}${Date.now()}`;
             const formattedPhoneNumber = telefone.startsWith("258") ? telefone : `258${telefone}`;
 
             console.log(`Iniciando STK Push para ${formattedPhoneNumber} com valor ${preco} MZN, Ref: ${accountReference}`);
