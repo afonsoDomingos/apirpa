@@ -1,24 +1,23 @@
-require('dotenv').config(); // Carrega variáveis do .env no process.env
+require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const connectDB = require('./config/db'); // Conexão MongoDB
+const connectDB = require('./config/db');
 const Documento = require('./models/documentoModel');
 
-// Importação dos routers
 const chatbotRoutes = require('./routes/chatbot');
 const documentoRoutes = require('./routes/documentoRoutes');
 const authRoutes = require('./routes/authRoutes');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
 const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes');
 const pagamentoRoutes = require('./routes/pagamentoRoutes');
-const { mpesaCallbackHandler } = require('./controllers/mpesaCallbackController');
+
 
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Variáveis ambiente para M-Pesa
+// Variáveis de ambiente
 const apiKey = process.env.MPESA_API_KEY;
 const publicKey = process.env.MPESA_PUBLIC_KEY?.replace(/\\n/g, '\n');
 const mpesaC2bUrl = process.env.MPESA_C2B_URL;
@@ -31,11 +30,11 @@ console.log(`M-Pesa C2B URL: ${mpesaC2bUrl ? 'Carregada' : 'NÃO CARREGADA'}`);
 // Middlewares
 app.use(express.json());
 
-// Configuração CORS - ajuste conforme seu front
+// CORS
 const allowedOrigins = ['https://recuperaaqui.vercel.app', 'http://localhost:3000'];
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // Requisições sem origin (Postman, curl)
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -47,10 +46,8 @@ app.use(cors({
   optionsSuccessStatus: 200,
 }));
 
-// Rota raiz para teste simples
+// Rotas principais
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
-
-// Rotas organizadas para evitar conflito e 404
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api', documentoRoutes);
 app.use('/api/auth', authRoutes);
@@ -58,14 +55,8 @@ app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
 app.use('/api/pagamentos', pagamentoRoutes);
 
-// Rota de callback da M-Pesa (usando express.raw para corpo em buffer)
-app.post(
-  "/api/pagamentos/mpesa/callback",
-  express.raw({ type: "*/*" }),
-  mpesaCallbackHandler
-);
 
-// Endpoint para contar documentos reportados
+// Contador de documentos
 app.get('/api/documentos/count', async (req, res) => {
   try {
     const count = await Documento.countDocuments({ origem: 'reportado' });
@@ -76,13 +67,12 @@ app.get('/api/documentos/count', async (req, res) => {
   }
 });
 
-// Conectar ao banco e iniciar o servidor
+// Conexão com o banco
 connectDB()
   .then(() => {
     console.log('Conectado ao MongoDB com sucesso!');
     app.listen(port, () => {
       console.log(`Servidor rodando na porta ${port}`);
-      console.log(`Aguardando requisições...`);
     });
   })
   .catch(err => {

@@ -4,7 +4,7 @@ const axios = require('axios');
 
 // Log inicial para verificar se a chave foi detectada
 if (!process.env.OPENROUTER_API_KEY) {
-  console.error('[RPA Assistente] ERRO: A chave OPENROUTER_API_KEY não está definida no ambiente!');
+  console.error('[RPA Assistente] ERRO: A chave OPENROUTER_API_KEY não está definida no ambiente Rpa!');
 } else {
   console.log('[RPA Assistente] Chave OPENROUTER_API_KEY detectada com sucesso.');
 }
