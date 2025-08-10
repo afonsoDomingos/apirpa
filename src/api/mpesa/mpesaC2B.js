@@ -23,13 +23,14 @@ class mpesaC2B {
         }
     }
 
-    generateCode() {
-        const timestamp = Date.now(); // milissegundos desde 1970
-        const randomNum = Math.floor(Math.random() * 10000); // número aleatório entre 0 e 9999
-        const code = `TX-${timestamp}-${randomNum}`;
-        console.log('[mpesaC2B] Código gerado para transação:', code);
-        return code;
-    }
+  generateCode() {
+  const timestamp = Date.now().toString().slice(-10); // últimos 10 dígitos do timestamp
+  const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0'); // 4 dígitos
+  const code = `${timestamp}${randomNum}`; // 14 caracteres no total
+  console.log('[mpesaC2B] Código gerado para transação:', code);
+  return code;
+}
+
 
     async payment(phone, amount) {
         console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}`);
