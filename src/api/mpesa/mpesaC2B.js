@@ -24,7 +24,9 @@ class mpesaC2B {
     }
 
     generateCode() {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const timestamp = Date.now(); // milissegundos desde 1970
+        const randomNum = Math.floor(Math.random() * 10000); // número aleatório entre 0 e 9999
+        const code = `TX-${timestamp}-${randomNum}`;
         console.log('[mpesaC2B] Código gerado para transação:', code);
         return code;
     }
@@ -33,15 +35,12 @@ class mpesaC2B {
         console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}`);
 
         const code = this.generateCode();
-       // const reference = 'GibraLive';
-        const reference = 'RpaLive';
-       // const reference = `Rpademo-${Date.now()}`;
-        console.log(`[mpesaC2B] Referência gerada: ${reference}`);
 
+        const reference = 'RpaLive';
+        console.log(`[mpesaC2B] Referência gerada: ${reference}`);
 
         const payload = {
             input_TransactionReference: code,
-           // input_CustomerMSISDN: `258${phone}`,
             input_CustomerMSISDN: phone,
             input_Amount: amount,
             input_ThirdPartyReference: reference,
@@ -61,7 +60,7 @@ class mpesaC2B {
                 {
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token,  // usa token gerado
+                        'Authorization': 'Bearer ' + token,
                         'Origin': 'developer.mpesa.vm.co.mz',
                     },
                 }
