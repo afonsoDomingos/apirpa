@@ -24,7 +24,7 @@ pagamentoSchema.pre('save', function (next) {
   next();
 });
 
-// Logs quando o status é alterado
+// Logs quando o status é alterado.
 pagamentoSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
   if (update?.status) {
