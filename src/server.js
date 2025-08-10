@@ -67,12 +67,14 @@ app.get('/api/documentos/count', async (req, res) => {
   }
 });
 
-// Conexão com o banco
+
+  // Conectar ao banco e iniciar o servidor
 connectDB()
   .then(() => {
     console.log('Conectado ao MongoDB com sucesso!');
     app.listen(port, () => {
       console.log(`Servidor rodando na porta ${port}`);
+      console.log(`Aguardando requisições...`);
     });
   })
   .catch(err => {
