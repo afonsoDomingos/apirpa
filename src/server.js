@@ -12,8 +12,6 @@ const solicitacoesRouter = require('./routes/solicitacoesRoutes');
 const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes');
 const pagamentoRoutes = require('./routes/pagamentoRoutes');
 
-
-
 const app = express();
 const port = process.env.PORT || 5000;
 

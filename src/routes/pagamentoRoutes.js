@@ -55,6 +55,7 @@ router.post('/processar', verificarToken, async (req, res) => {
       metodoPagamento: method,
       valor: amount,
       telefone: phone || null,
+      
       dadosCartao: dadosCartao || null,
       status: 'aprovado',
       usuarioId: usuarioId, // campo consistente com o modelo
