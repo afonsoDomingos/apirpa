@@ -1,215 +1,383 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
+const validator = require('validator');
+const NodeCache = require('node-cache');
+
+// Cache para respostas comuns (5 minutos de TTL)
+const responseCache = new NodeCache({ stdTTL: 300 });
+
+// Rate limiting - 10 mensagens por minuto por IP
+const chatbotRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 10,
+  message: {
+    error: 'Muitas mensagens enviadas. Tente novamente em um minuto.',
+    retryAfter: 60
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Pula rate limit para rota de teste em desenvolvimento
+    return process.env.NODE_ENV === 'development' && req.path === '/test';
+  }
+});
+
+// Middleware de logging
+router.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const ip = req.ip || req.connection.remoteAddress;
+  console.log(`[${timestamp}] RPA Assistente - ${req.method} ${req.path} - IP: ${ip}`);
+  next();
+});
+
+// Respostas de fallback quando a API externa falha
+const fallbackResponses = {
+  'ola': 'Olá! Sou o RPA Assistente. Como posso ajudá-lo com documentos perdidos hoje?',
+  'oi': 'Oi! Estou aqui para ajudar com recuperação de documentos. O que precisa?',
+  'como recuperar documento': 'Para recuperar documentos, acesse nossa plataforma em recuperaaqui.co.mz, faça login e use a seção "Procurar Documentos".',
+  'como reportar documento': 'Para reportar um documento encontrado, acesse a plataforma, faça login e use a seção "Reportar Documento Encontrado".',
+  'contato': 'Você pode nos contatar pelo telefone/WhatsApp: 879 642 412 ou visite nosso site: recuperaaqui.co.mz',
+  'criar conta': 'Para criar uma conta, acesse https://recuperaaqui.vercel.app/ e preencha o formulário de cadastro com nome, e-mail e senha.',
+  'como funciona': 'A plataforma RPA/RecuperaAqui conecta pessoas que perderam documentos com aquelas que os encontraram. Você pode procurar ou reportar documentos após criar uma conta.',
+  'default': 'Desculpe, estou temporariamente indisponível. Tente novamente em alguns minutos ou contate nosso suporte em 879 642 412.'
+};
+
+// Função para obter resposta de fallback
+const getFallbackResponse = (message) => {
+  const normalizedMessage = message.toLowerCase().trim();
+  
+  // Verifica correspondências exatas primeiro
+  if (fallbackResponses[normalizedMessage]) {
+    return fallbackResponses[normalizedMessage];
+  }
+  
+  // Verifica correspondências parciais
+  for (const [key, response] of Object.entries(fallbackResponses)) {
+    if (normalizedMessage.includes(key)) {
+      return response;
+    }
+  }
+  
+  return fallbackResponses.default;
+};
 
 // Log inicial para verificar se a chave foi detectada
 if (!process.env.OPENROUTER_API_KEY) {
-  console.error('[RPA Assistente] ERRO: A chave OPENROUTER_API_KEY não está definida no ambiente Rpa!');
+  console.error('[RPA Assistente] ERRO: A chave OPENROUTER_API_KEY não está definida no ambiente!');
 } else {
   console.log('[RPA Assistente] Chave OPENROUTER_API_KEY detectada com sucesso.');
 }
 
 // ✅ Rota principal do chatbot
-router.post('/', async (req, res) => {
-  const { message } = req.body;
-  console.log(`[RPA Assistente] Mensagem recebida do usuário: "${message}"`);
-
+router.post('/', chatbotRateLimit, async (req, res) => {
+  const startTime = Date.now();
+  
   try {
+    const { message } = req.body;
+
+    // Validação de entrada
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ 
+        error: 'Mensagem inválida ou vazia. Por favor, envie uma mensagem válida.' 
+      });
+    }
+
+    // Limite de caracteres
+    if (message.length > 2000) {
+      return res.status(400).json({ 
+        error: 'Mensagem muito longa. O limite é de 2000 caracteres.' 
+      });
+    }
+
+    // Sanitização básica
+    const sanitizedMessage = validator.escape(message.trim());
+    
+    // Log seguro da mensagem (sem expor conteúdo completo em produção)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[RPA Assistente] Mensagem recebida: "${sanitizedMessage}"`);
+    } else {
+      console.log(`[RPA Assistente] Mensagem recebida (${sanitizedMessage.length} chars)`);
+    }
+
+    // Verificar cache primeiro
+    const cacheKey = `chat_${sanitizedMessage.toLowerCase()}`;
+    const cachedResponse = responseCache.get(cacheKey);
+    
+    if (cachedResponse) {
+      console.log('[RPA Assistente] Resposta obtida do cache');
+      return res.json({ 
+        reply: cachedResponse,
+        cached: true,
+        responseTime: Date.now() - startTime
+      });
+    }
+
+    // Verificar se a API key está disponível
+    if (!process.env.OPENROUTER_API_KEY) {
+      console.warn('[RPA Assistente] API Key não disponível, usando fallback');
+      const fallbackReply = getFallbackResponse(sanitizedMessage);
+      return res.json({ 
+        reply: fallbackReply,
+        fallback: true,
+        responseTime: Date.now() - startTime
+      });
+    }
+
     console.log('[RPA Assistente] Enviando requisição para OpenRouter...');
+    
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
         model: 'openai/gpt-oss-20b',
         temperature: 0.7,
+        max_tokens: 1000,
         messages: [
           {
             role: 'system',
-           content: `
-Você é o RPA Assistente, um assistente especializado em ajudar usuários a recuperar documentos na plataforma.
+            content: `
+Você é o RPA Assistente, especializado em ajudar usuários a recuperar e guardar documentos na plataforma RecuperaAqui (Rpa).
 
-⚠️ Regras de conduta:
-- Responda sempre em **português**, de forma **educada, curta e objetiva**.
-- Você só pode responder perguntas sobre:
-  - Como reportar documentos perdidos,
-  - Como recuperar documentos através da plataforma,
-  - Boas práticas para garantir a segurança dos documentos.
-⚠️ **Regras de conduta:**
-- Responda sempre em **português**, de forma **educada, breve e objetiva**.  
-- Só responda em outra língua se o usuário pedir explicitamente.  
-- Atue **somente** nos seguintes temas:
-  - Como reportar documentos perdidos;
-  - Como recuperar documentos pela plataforma;
-  - Boas práticas para manter documentos seguros;
-  - Como guardar documentos na plataforma RPA;
-  - Como gerar um CV na plataforma RPA;
-  - Como solicitar documentos;
-  - Como nos contactar;
-  - O que a pessoa ganha ao encontrar e registar um documento na plataforma;
-  - Área de atuação da plataforma.
+⚠️ REGRAS DE CONDUTA:
+- Responda sempre em português, de forma educada, breve e objetiva
+- Só responda sobre temas relacionados à plataforma RPA/RecuperaAqui
+- Permita saudações e despedidas simples
 
-📝 Guia rápido de como funciona a plataforma:
-1. O usuário deve **criar uma conta** para utilizar os serviços.
-2. Após o login, verá duas secções principais:
-   - **Procurar Documentos**: permite pesquisar por tipo de documento, número, ou província. Se encontrar, pode solicitar. Se não encontrar, pode cadastrar como perdido.
-   - **Reportar Documento Encontrado**: quem encontra um documento pode reportar preenchendo dados como tipo, nome, número, província, e um meio de contato.
-- **Permita conversas normais, como saudações e despedidas, desde que não fujam do escopo definido.**
+🎯 TEMAS PERMITIDOS:
+- Como reportar documentos perdidos
+- Como recuperar documentos pela plataforma  
+- Como guardar documentos na plataforma
+- Como gerar CV na plataforma
+- Como solicitar documentos
+- Boas práticas de segurança de documentos
+- Como contactar suporte
+- Benefícios para quem encontra documentos (25% de comissão)
+- Área de atuação (apenas Moçambique)
 
-📌 A plataforma também contém páginas explicativas com instruções sobre:
-- O que fazer se o documento não for encontrado,
-- Como cadastrar ou reportar corretamente,
-- Recomendações para manter os documentos em segurança.
-📝 **Como funciona a plataforma:**
-1. O usuário deve **criar uma conta** para acessar os serviços.
-2. Após o login, verá duas seções principais:
-   - **Procurar Documentos**: permite buscar documentos por tipo, número ou província. Caso encontre, pode solicitar; caso contrário, pode cadastrar o documento como perdido.
-   - **Reportar Documento Encontrado**: quem encontrar um documento pode reportá-lo preenchendo dados como tipo, nome, número, província e contato.
+📝 COMO FUNCIONA A PLATAFORMA:
+1. Criar conta em https://recuperaaqui.vercel.app/
+2. Duas seções principais:
+   - "Procurar Documentos": buscar por tipo/número/província
+   - "Reportar Documento": reportar documentos encontrados
+3. Sistema de assinaturas: Mensal (150 MZN) ou Anual (650 MZN)
 
-❌ Nunca responda temas fora desse escopo.
-🌍 **Área de atuação da plataforma:**  
-Atualmente, a plataforma RecuperaAqui funciona apenas para documentos emitidos e procurados dentro de Moçambique.  
-Se você estiver em outro país ou buscando documentos de fora de Moçambique, infelizmente não será possível usar nossos serviços.
+📞 CONTATOS:
+- Site: recuperaaqui.co.mz
+- WhatsApp: 879 642 412
+- Facebook: https://web.facebook.com/people/Rpa/61570930139844/
 
-📌 Se o usuário fizer perguntas fora desse contexto, responda com:
-📌 A plataforma possui páginas explicativas com instruções sobre:
-- O que fazer se o documento não for encontrado;
-- Como cadastrar, guardar ou reportar documentos corretamente;
-- Como gerar um CV na plataforma;
-- Como solicitar documentos;
-- Como entrar em contato conosco;
-- Recomendações para manter seus documentos seguros.
+❌ Para temas fora do escopo, responda:
+"Desculpe, só posso ajudar com informações sobre a plataforma."
 
-"Desculpe, só posso te ajudar com informações sobre documentos perdidos, como recuperá-los através da plataforma, ou dicas para manter seus documentos seguros. Por favor, pergunte sobre isso."
-📞 **Nosso contato de suporte:**
-- Site: [recuperaaqui.co.mz](https://recuperaaqui.co.mz)
-- Telefone/WhatsApp: 879 642 412
-- Facebook: [https://web.facebook.com/people/Rpa/61570930139844/](https://web.facebook.com/people/Rpa/61570930139844/)
-- Instagram: [https://www.instagram.com/techvibemz/](https://www.instagram.com/techvibemz/)
-- YouTube: [https://www.youtube.com/channel/UClyCqvjCJeQHY21K5SMe2LA](https://www.youtube.com/channel/UClyCqvjCJeQHY21K5SMe2LA)
-- LinkedIn: Rpa Moçambique
-
-👤 Se o usuário perguntar quem é o criador do assistente, responda:
-❓ **FAQ - Perguntas Frequentes:**
-
-"O RPA Assistente foi criado por Afonso Domingos, moçambicano, residente em Maputo, autodidata em Informática e Inteligência Artificial."
-1. **O que é a RPA/RecuperaAqui?**  
-A RPA, também conhecida como RecuperaAqui, é uma plataforma que ajuda usuários a recuperar documentos perdidos, reportar documentos encontrados e gerenciar documentos de forma segura e prática.
-
-2. **Como criar uma conta?**  
-Preencha seu nome, e-mail e senha no formulário de cadastro. Depois, faça login para usar a plataforma: https://recuperaaqui.vercel.app/
-
-3. **Como fazer login?**  
-Informe seu e-mail e senha cadastrados. Você será direcionado(a) para a tela principal: https://recuperaaqui.vercel.app/
-
-4. **Como procurar um documento?**  
-Vá até a aba "Procurar", escolha o filtro desejado e clique em "Buscar" para ver resultados.
-
-> **Se o documento não for encontrado:**  
-> "O documento que você está procurando ainda não está cadastrado em nossa base de dados.  
-> Você pode ajudar reportando esse documento na aba **Reportar** para que, quando ele estiver disponível, você receba uma notificação.  
-> Enquanto isso, pode tentar novamente mais tarde ou usar a busca manual na aba **Procurar**."
-
-5. **Como solicitar um documento?**  
-Se encontrar o documento, clique em "Solicitar". É necessário ter assinatura ativa. Veja os planos: https://recuperaaqui.vercel.app/assinaturas
-
-6. **Como fazer uma assinatura?**  
-Planos disponíveis: Mensal (150 MZN) ou Anual (650 MZN). Após pagamento, a assinatura é ativada imediatamente.
-
-7. **Como reportar um documento?**  
-Se não encontrar o documento, vá à aba "Reportar", preencha os dados e envie. Você será notificado se alguém encontrá-lo.
-
-8. **Como guardar um documento?**  
-Acesse "Guardar Documento", preencha os dados e clique em salvar. O documento ficará disponível em sua conta, com opção de gerar PDF: https://recuperaaqui.vercel.app/guardardocumentos
-
-9. **Como gerar um PDF?**  
-Após guardar um documento, clique em "Gerar PDF". Um arquivo será criado automaticamente.
-
-10. **O que a pessoa ganha ao encontrar e registrar um documento na plataforma?**  
-A pessoa recebe uma comissão de 25% do valor pago pela pessoa que perdeu o documento quando este for recuperado com sucesso pela plataforma.
-
-❌ **Não responda perguntas fora deste escopo, exceto para saudações e despedidas simples.**
-
-📌 Se o usuário fizer perguntas fora do tema, responda:
-
-"Desculpe, só posso ajudar com informações sobre documentos perdidos, como recuperá-los pela plataforma, dicas para guardar documentos, gerar um CV, solicitar documentos ou como entrar em contato conosco. Por favor, pergunte sobre esses temas."
-
-👤 **Se o usuário perguntar quem criou o assistente, a plataforma RPA ou RecuperaAqui, responda:**
-
-"O RPA Assistente foi criado por Afonso Domingos, moçambicano, residente em Maputo, autodidata em Informática e Inteligência Artificial.  
-Você pode encontrá-lo no LinkedIn: https://www.linkedin.com/in/afonso-domingos-6b59361a5/  
-Contato: 847 877 405.  
-
-Além disso, Afonso é cofundador da TechVibe, uma empresa de Tecnologia e Marketing Digital."
-
-Nunca mencione essas informações se não forem perguntadas diretamente.
-
-Nunca fale sobre o criador se não for perguntado diretamente.
+👤 SOBRE O CRIADOR (só se perguntado):
+"O RPA Assistente foi criado por Afonso Domingos, moçambicano de Maputo, autodidata em IA. LinkedIn: https://www.linkedin.com/in/afonso-domingos-6b59361a5/ | Contato: 847 877 405"
 `.trim(),
           },
           {
             role: 'user',
-            content: message,
+            content: sanitizedMessage,
           },
         ],
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': process.env.APP_BASE_URL || 'http://localhost:3000',
           'X-Title': 'RPA Assistente',
         },
+        timeout: 30000, // 30 segundos de timeout
       }
     );
 
-    const reply = response.data.choices[0].message.content;
-    console.log(`[RPA Assistente] Resposta recebida: "${reply}"`);
+    const reply = response.data?.choices?.[0]?.message?.content;
+    
+    if (!reply) {
+      throw new Error('Resposta inválida da API');
+    }
 
-    res.json({ reply });
+    console.log(`[RPA Assistente] Resposta recebida com sucesso (${reply.length} chars)`);
+
+    // Salvar no cache apenas respostas bem-sucedidas
+    responseCache.set(cacheKey, reply);
+
+    res.json({ 
+      reply,
+      responseTime: Date.now() - startTime,
+      tokensUsed: response.data.usage?.total_tokens || 'N/A'
+    });
+
   } catch (error) {
-    console.error('[RPA Assistente] Erro ao processar mensagem:', error.response?.data || error.message);
-    res.status(500).json({
-      error: 'Erro ao processar mensagem com a OpenRouter',
-      details: error.response?.data || null,
+    const responseTime = Date.now() - startTime;
+    console.error('[RPA Assistente] Erro ao processar mensagem:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseTime
+    });
+
+    // Tratamento específico de diferentes tipos de erro
+    if (error.response?.status === 429) {
+      return res.status(429).json({
+        error: 'Muitas requisições para o serviço de IA. Tente novamente em alguns segundos.',
+        retryAfter: 30,
+        responseTime
+      });
+    }
+
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      console.error('[RPA Assistente] Erro de autenticação com OpenRouter');
+      const fallbackReply = getFallbackResponse(req.body.message || '');
+      return res.json({
+        reply: fallbackReply,
+        fallback: true,
+        reason: 'authentication_error',
+        responseTime
+      });
+    }
+
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      const fallbackReply = getFallbackResponse(req.body.message || '');
+      return res.json({
+        reply: fallbackReply,
+        fallback: true,
+        reason: 'timeout',
+        responseTime
+      });
+    }
+
+    // Fallback para qualquer outro erro
+    const fallbackReply = getFallbackResponse(req.body.message || '');
+    res.json({
+      reply: fallbackReply,
+      fallback: true,
+      reason: 'service_unavailable',
+      responseTime
     });
   }
 });
 
-// ✅ Nova rota para teste de chave e conectividade
+// ✅ Rota para teste de chave e conectividade  
 router.get('/test', async (req, res) => {
   console.log('[RPA Assistente] Testando conexão com OpenRouter...');
+  
   try {
     if (!process.env.OPENROUTER_API_KEY) {
-      return res.status(400).json({ status: 'erro', message: 'Chave OPENROUTER_API_KEY não configurada' });
+      return res.status(400).json({ 
+        status: 'erro', 
+        message: 'Chave OPENROUTER_API_KEY não configurada',
+        timestamp: new Date().toISOString()
+      });
     }
+
+    const startTime = Date.now();
 
     // Faz uma chamada simples para validar a chave
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
         model: 'openai/gpt-oss-20b',
-        messages: [{ role: 'user', content: 'teste' }],
+        messages: [{ 
+          role: 'user', 
+          content: 'Responda apenas "OK" para testar a conexão.' 
+        }],
+        max_tokens: 10,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
+          'HTTP-Referer': process.env.APP_BASE_URL || 'http://localhost:3000',
+          'X-Title': 'RPA Assistente Test',
         },
+        timeout: 15000,
       }
     );
 
-    if (response.data && response.data.choices) {
-      res.json({ status: 'ok', message: 'Conexão com OpenRouter bem-sucedida!' });
+    const responseTime = Date.now() - startTime;
+
+    if (response.data && response.data.choices && response.data.choices.length > 0) {
+      res.json({ 
+        status: 'ok', 
+        message: 'Conexão com OpenRouter bem-sucedida!',
+        responseTime: `${responseTime}ms`,
+        model: 'openai/gpt-oss-20b',
+        timestamp: new Date().toISOString(),
+        testResponse: response.data.choices[0].message.content
+      });
     } else {
-      res.status(500).json({ status: 'erro', message: 'Resposta inesperada da API OpenRouter' });
+      res.status(500).json({ 
+        status: 'erro', 
+        message: 'Resposta inesperada da API OpenRouter',
+        responseTime: `${responseTime}ms`,
+        timestamp: new Date().toISOString()
+      });
     }
+
   } catch (error) {
-    console.error('[RPA Assistente] Erro no teste de conexão:', error.response?.data || error.message);
+    const errorDetails = {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      timestamp: new Date().toISOString()
+    };
+
+    console.error('[RPA Assistente] Erro no teste de conexão:', errorDetails);
+    
     res.status(500).json({
       status: 'erro',
       message: 'Falha ao conectar com OpenRouter',
-      details: error.response?.data || error.message,
+      details: errorDetails
     });
   }
+});
+
+// ✅ Rota para estatísticas do cache
+router.get('/stats', (req, res) => {
+  const stats = responseCache.getStats();
+  res.json({
+    cache: {
+      keys: stats.keys,
+      hits: stats.hits,
+      misses: stats.misses,
+      hitRate: stats.hits / (stats.hits + stats.misses) || 0
+    },
+    server: {
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+// ✅ Rota para limpar cache (útil para desenvolvimento)
+router.post('/clear-cache', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({
+      error: 'Operação não permitida em produção'
+    });
+  }
+  
+  responseCache.flushAll();
+  console.log('[RPA Assistente] Cache limpo manualmente');
+  
+  res.json({
+    message: 'Cache limpo com sucesso',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ✅ Rota de health check
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'RPA Assistente',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime()
+  });
 });
 
 module.exports = router;
