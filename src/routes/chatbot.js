@@ -70,7 +70,9 @@ Como fazer login?
 Use seu e-mail e senha cadastrados para acessar a plataforma.
 
 Como procurar um documento?
-Vá na aba Procurar, filtre e clique em Buscar os digita aqui no chat (quero procurar meu documento? , procura meu documento, Podes me ajudar a procurar meu documento?).
+Vá na aba Procurar, filtre e clique em Buscar ou digita aqui no chat:
+
+(quero procurar meu documento? , procura meu documento, Podes me ajudar a procurar meu documento?).
 
 Se não encontrar, reporte na aba Reportar para receber notificações.
 
