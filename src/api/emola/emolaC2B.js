@@ -39,6 +39,11 @@ class EmolaC2B {
   // 💳 2. Fazer pagamento C2B
   async payment(phone, amount, reference = "TesteRpa") {
     try {
+      // Validação simples dos parâmetros
+      if (!phone || !amount) {
+        return { status: "error", message: "Telefone e valor são obrigatórios." };
+      }
+
       // Se não há token, gerar
       if (!this.token) {
         console.log("[EmolaC2B] Nenhum token em cache, a gerar novo...");
@@ -62,13 +67,31 @@ class EmolaC2B {
       console.log("➡️ Endpoint:", endpoint);
       console.log("➡️ Payload:", payload);
 
-      const response = await axios.post(endpoint, payload, {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-      });
+      let response;
+      try {
+        response = await axios.post(endpoint, payload, {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+        });
+      } catch (err) {
+        // Se token expirou, tenta renovar e refazer a requisição
+        if (err.response?.status === 401) {
+          console.log("[EmolaC2B] Token expirado, gerando novo token...");
+          await this.getToken();
+          response = await axios.post(endpoint, payload, {
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          });
+        } else {
+          throw err;
+        }
+      }
 
       console.log("[EmolaC2B] Sucesso ✅:", response.data);
       return { status: "success", data: response.data };
