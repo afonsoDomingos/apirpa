@@ -5,6 +5,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const Documento = require('./models/documentoModel');
 
+
 const chatbotRoutes = require('./routes/chatbot');
 const documentoRoutes = require('./routes/documentoRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -52,6 +53,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
 app.use('/api/pagamentos', pagamentoRoutes);
+
+
+const emolaTestRouter = require('./routes/emolaTest');
+app.use('/api/emola/test', emolaTestRouter);
+
 
 
 // Contador de documentos

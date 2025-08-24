@@ -53,6 +53,7 @@
     "dotenv": "^16.6.1",
     "dottie": "^2.0.6",
     "dunder-proto": "^1.0.1",
+    "e2payments": "^1.0.0",
     "ecc-jsbn": "^0.1.2",
     "ecdsa-sig-formatter": "^1.0.11",
     "ee-first": "^1.1.1",

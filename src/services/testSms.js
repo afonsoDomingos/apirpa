@@ -9,5 +9,4 @@ async function testSendSms() {
 
 testSendSms();
 
-
 //node testSms.js  PARA TESTAR MAIS ANTES TENHO QUE CONFUGURAR A VARIAVEL DE AMBIENT
