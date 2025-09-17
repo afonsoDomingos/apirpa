@@ -1,33 +1,44 @@
-const axios = require('axios');
+const soap = require('soap');
 const config = require('./config');
 
-class emolaB2C {
-  async payment(phone, amount) {
-    const transactionCode = Date.now().toString();
-    const payload = {
-      customer_number: phone,
-      amount,
-      transaction_reference: transactionCode,
-      third_party_reference: 'RpaLive'
-    };
+class EmolaB2C {
+  async payment(msisdn, amount) {
+    const transId = `B2C_${Date.now()}`;
 
     try {
-      const response = await axios.post(
-        `${config.baseUrl}/payments/emola/b2c`,
-        payload,
-        {
-          headers: { 
-            'Content-Type': 'application/json',
-            Authorization: `Basic ${Buffer.from(`${config.username}:${config.password}`).toString('base64')}`
-          }
-        }
-      );
+      const url = config.wsdl;
+      const client = await soap.createClientAsync(url);
 
-      return { status: 'success', data: response.data };
-    } catch (error) {
-      return { status: 'error', message: error.response?.data || error.message };
+      const args = {
+        Input: {
+          username: config.username,
+          password: config.password,
+          wscode: "pushUssdDisbursementB2C",
+          param: [
+            { $attributes: { name: "partnerCode" }, $value: config.partnerCode },
+            { $attributes: { name: "msisdn" }, $value: msisdn },
+            { $attributes: { name: "smsContent" }, $value: "Pagamento da empresa" },
+            { $attributes: { name: "transAmount" }, $value: amount },
+            { $attributes: { name: "transId" }, $value: transId },
+            { $attributes: { name: "key" }, $value: config.privateKey }
+          ],
+          rawData: ""
+        }
+      };
+
+      const [result] = await client.gwOperationAsync(args);
+
+      return {
+        status: result?.Result?.error === "0" ? "success" : "fail",
+        data: result,
+        transId
+      };
+
+    } catch (err) {
+      console.error("Erro no EmolaB2C.payment:", err);
+      return { status: "fail", error: err.message };
     }
   }
 }
 
-module.exports = new emolaB2C();
+module.exports = new EmolaB2C();

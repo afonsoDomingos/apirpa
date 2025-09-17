@@ -12,6 +12,8 @@ const authRoutes = require('./routes/authRoutes');
 const solicitacoesRouter = require('./routes/solicitacoesRoutes');
 const documentosGuardadosRoutes = require('./routes/documentosGuardadosRoutes');
 const pagamentoRoutes = require('./routes/pagamentoRoutes');
+// Rotas de notícias
+const noticiasRouter = require('./routes/noticias');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -28,6 +30,11 @@ console.log(`M-Pesa C2B URL: ${mpesaC2bUrl ? 'Carregada' : 'NÃO CARREGADA'}`);
 
 // Middlewares
 app.use(express.json());
+
+
+const emolaCallbackRoutes = require('./routes/emolaCallback');
+app.use('/api/emola', emolaCallbackRoutes);
+
 
 // CORS
 const allowedOrigins = ['https://recuperaaqui.vercel.app', 'http://localhost:3000'];
@@ -53,10 +60,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
 app.use('/api/pagamentos', pagamentoRoutes);
+app.use('/noticias', noticiasRouter);
+
+app.use('/uploads', express.static('uploads'));
+
 
 
 const emolaTestRouter = require('./routes/emolaTest');
 app.use('/api/emola/test', emolaTestRouter);
+
 
 
 
