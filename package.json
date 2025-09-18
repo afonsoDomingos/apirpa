@@ -143,6 +143,7 @@
     "mpesa-node-api": "^1.1.0",
     "mquery": "^5.0.0",
     "ms": "^2.0.0",
+    "multer": "^2.0.2",
     "negotiator": "^0.6.3",
     "node-addon-api": "^5.1.0",
     "node-cache": "^5.1.2",
