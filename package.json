@@ -77,6 +77,7 @@
     "form-data": "^4.0.3",
     "forwarded": "^0.2.0",
     "fresh": "^0.5.2",
+    "fs-extra": "^11.3.2",
     "fs-minipass": "^2.1.0",
     "fs.realpath": "^1.0.0",
     "function-bind": "^1.1.2",
