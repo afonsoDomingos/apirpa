@@ -60,7 +60,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
 app.use('/api/pagamentos', pagamentoRoutes);
-app.use('/noticias', noticiasRouter);
+app.use('/api/noticias', noticiasRouter);
+
+
 
 app.use('/uploads', express.static('uploads'));
 
