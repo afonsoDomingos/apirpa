@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1758189231369,
+    "titulo": "Noticia 2",
+    "resumo": "Noticia 2",
+    "conteudo": "Noticia 2",
+    "data": "2025-09-18",
+    "imagem": "/uploads/1758189230235-275571653.png"
+  },
+  {
+    "id": 1758189282501,
+    "titulo": "Noticia 3",
+    "resumo": "Noticia 3",
+    "conteudo": "Noticia 3",
+    "data": "2025-09-18",
+    "imagem": "/uploads/1758189282353-780098195.png"
+  },
+  {
+    "id": 1758189350027,
+    "titulo": "Noticia 4",
+    "resumo": "Noticia 4",
+    "conteudo": "Noticia 4",
+    "data": "2025-09-18",
+    "imagem": "/uploads/1758189349352-263069243.png"
+  },
+  {
+    "id": 1758190259988,
+    "titulo": "Noticia 5",
+    "resumo": "Noticia 5",
+    "conteudo": "Noticia 5",
+    "data": "2025-09-18",
+    "imagem": "/uploads/1758190258622-850044413.png"
+  },
+  {
+    "id": 1758194134282,
+    "titulo": "Noticia 6",
+    "resumo": "Noticia 6",
+    "conteudo": "Noticia 6",
+    "data": "2025-09-18",
+    "imagem": "/uploads/1758194134123-384530660.png"
+  }
+]

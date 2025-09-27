@@ -101,4 +101,23 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// Atualizar apenas visualizações (incremento no backend)
+router.patch('/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const noticias = await lerNoticias();
+  const index = noticias.findIndex(n => n.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ error: 'Notícia não encontrada' });
+  }
+
+  // Inicializa caso não exista ainda
+  noticias[index].visualizacoes = (noticias[index].visualizacoes || 0) + 1;
+
+  await salvarNoticias(noticias);
+  res.json({ success: true, visualizacoes: noticias[index].visualizacoes });
+});
+
+
+
 module.exports = router;
