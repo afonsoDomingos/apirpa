@@ -1,18 +1,21 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const bcryptjs = require('bcryptjs'); // <-- Esta linha é crucial!
+const bcryptjs = require('bcryptjs');
 const Usuario = require('../models/authModel');
-//const verificarToken = require('../middleware/verificarToken'); // Certifique-se de ter esse middleware
 const verificarToken = require('../middleware/authMiddleware');
+const { OAuth2Client } = require("google-auth-library");
+require("dotenv").config();
+
+// Log para verificar variável de ambiente
+console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const router = express.Router();
 
 // Registrar novo usuário
 router.post('/register', async (req, res) => {
   const { nome, email, senha, role } = req.body;
-
-  console.log('📥 Registro recebido:', { nome, email, role });
-  console.log('Senha recebida:', senha);
 
   if (!nome || !email || !senha) {
     return res.status(400).json({ msg: 'Nome, e-mail e senha são obrigatórios' });
@@ -21,20 +24,20 @@ router.post('/register', async (req, res) => {
   try {
     const usuarioExistente = await Usuario.findOne({ email });
     if (usuarioExistente) {
-      console.log('❌ Usuário já existe:', email);
       return res.status(400).json({ msg: 'Já existe um usuário com este e-mail' });
     }
+
+    const salt = await bcryptjs.genSalt(10);
+    const senhaHash = await bcryptjs.hash(senha, salt);
 
     const novoUsuario = new Usuario({
       nome,
       email,
-      senha,
+      senha: senhaHash,
       role: role || 'cliente',
     });
 
     await novoUsuario.save();
-
-    console.log('✅ Novo usuário salvo:', novoUsuario);
 
     res.status(201).json({
       msg: 'Usuário registrado com sucesso',
@@ -45,17 +48,13 @@ router.post('/register', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Erro no registro:', err);
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
 });
 
-// Login
+// Login normal
 router.post('/login', async (req, res) => {
   const { email, senha } = req.body;
-
-  console.log('🔐 Tentativa de login:', email);
-  console.log('Senha recebida:', senha);
 
   if (!email || !senha) {
     return res.status(400).json({ msg: 'E-mail e senha são obrigatórios' });
@@ -64,16 +63,11 @@ router.post('/login', async (req, res) => {
   try {
     const usuario = await Usuario.findOne({ email });
     if (!usuario) {
-      console.log('❌ Usuário não encontrado:', email);
       return res.status(400).json({ msg: 'Usuário não encontrado' });
     }
 
     const senhaValida = await usuario.matchSenha(senha.trim());
-
-    console.log('Senha válida?', senhaValida);
-
     if (!senhaValida) {
-      console.log('❌ Senha incorreta para o usuário:', email);
       return res.status(400).json({ msg: 'Senha incorreta' });
     }
 
@@ -85,8 +79,6 @@ router.post('/login', async (req, res) => {
 
     const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
 
-    console.log('✅ Login bem-sucedido:', { id: usuario._id, role: usuario.role });
-
     res.json({
       msg: 'Login bem-sucedido',
       token,
@@ -94,13 +86,60 @@ router.post('/login', async (req, res) => {
       redirectUrl,
     });
   } catch (err) {
-    console.error('Erro no login:', err);
     res.status(500).json({ msg: 'Erro no servidor', erro: err.message });
   }
 });
 
+// Login via Google
+router.post('/google', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ msg: 'Token ausente' });
 
-// Listar usuários
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, email_verified, picture } = payload;
+
+    if (!email_verified) {
+      return res.status(400).json({ msg: "E-mail não verificado pelo Google" });
+    }
+
+    let usuario = await Usuario.findOne({ email });
+
+    if (!usuario) {
+      const senhaAleatoria = await bcryptjs.hash(email + Date.now(), 10); // senha aleatória
+      usuario = new Usuario({
+        nome: name,
+        email,
+        senha: senhaAleatoria,
+        role: "cliente",
+        avatar: picture,
+        googleId: payload.sub
+      });
+      await usuario.save();
+    }
+
+    const jwtToken = jwt.sign(
+      { id: usuario._id, role: usuario.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      msg: "Login via Google bem-sucedido",
+      token: jwtToken,
+      usuario: { id: usuario._id, nome: usuario.nome, email: usuario.email, role: usuario.role }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ msg: "Erro no login via Google", erro: error.message });
+  }
+});
+
 router.get('/usuarios', async (req, res) => {
   try {
     const { role } = req.query;
@@ -120,17 +159,11 @@ router.get('/usuarios', async (req, res) => {
   }
 });
 
-
-// Atualizar usuário
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
   const { nome, senha, email, role } = req.body;
 
-  console.log('✏️ Atualização de usuário:', id);
-  console.log('Dados recebidos para atualização:', { nome, email, role });
-
   if (req.usuario.id !== id && req.usuario.role !== 'admin') {
-    console.log('❌ Acesso negado para edição por:', req.usuario);
     return res.status(403).json({ msg: 'Acesso negado' });
   }
 
@@ -140,14 +173,11 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     if (senha) {
       const salt = await bcryptjs.genSalt(10);
       const senhaHash = await bcryptjs.hash(senha, salt);
-      console.log('Senha recebida:', senha);
-      console.log('Hash gerado:', senhaHash);
       updateData.senha = senhaHash;
     }
     if (email) {
       const emailExistente = await Usuario.findOne({ email });
       if (emailExistente && emailExistente._id.toString() !== id) {
-        console.log('❌ E-mail já em uso:', email);
         return res.status(400).json({ msg: 'E-mail já em uso' });
       }
       updateData.email = email;
@@ -159,8 +189,6 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
     const usuarioAtualizado = await Usuario.findByIdAndUpdate(id, updateData, { new: true });
     if (!usuarioAtualizado) return res.status(404).json({ msg: 'Usuário não encontrado' });
 
-    console.log('✅ Usuário atualizado:', usuarioAtualizado);
-
     res.json({
       msg: 'Usuário atualizado',
       usuario: {
@@ -171,40 +199,29 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Erro ao atualizar usuário:', err);
     res.status(500).json({ msg: 'Erro ao atualizar usuário', erro: err.message });
   }
 });
 
-// Deletar usuário
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
 
-  console.log('🗑️ Requisição de remoção de usuário:', id);
-
   if (req.usuario.role !== 'admin') {
-    console.log('❌ Acesso negado para deletar por:', req.usuario.role);
     return res.status(403).json({ msg: 'Acesso negado' });
   }
 
   try {
     const usuarioRemovido = await Usuario.findByIdAndDelete(id);
     if (!usuarioRemovido) {
-      console.log('❌ Usuário não encontrado para deletar:', id);
       return res.status(404).json({ msg: 'Usuário não encontrado' });
     }
 
-    console.log('✅ Usuário removido com sucesso:', usuarioRemovido.email);
-
     res.json({ msg: 'Usuário removido com sucesso' });
   } catch (err) {
-    console.error('Erro ao remover usuário:', err);
     res.status(500).json({ msg: 'Erro ao remover usuário', erro: err.message });
   }
 });
 
-
-// Rota protegida de teste
 router.get('/protegida', verificarToken, (req, res) => {
   res.json({ msg: 'Acesso autorizado', usuario: req.usuario });
 });

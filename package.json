@@ -86,6 +86,7 @@
     "get-proto": "^1.0.1",
     "getpass": "^0.1.7",
     "glob": "^7.2.3",
+    "google-auth-library": "^10.4.0",
     "gopd": "^1.2.0",
     "har-schema": "^2.0.0",
     "har-validator": "^5.1.5",
