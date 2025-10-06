@@ -158,6 +158,7 @@ router.post('/google', async (req, res) => {
     }
 
     const jwtToken = gerarTokenJWT({ id: usuario._id, role: usuario.role }, '7d');
+    const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
 
     return res.json({
       msg: "Login via Google bem-sucedido",
@@ -168,7 +169,8 @@ router.post('/google', async (req, res) => {
         nome: usuario.nome,
         email: usuario.email,
         role: usuario.role
-      }
+      },
+      redirectUrl
     });
   } catch (error) {
     console.error("❌ /google - Erro ao autenticar via Google:", error.message);
