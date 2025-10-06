@@ -4,9 +4,10 @@ const bcryptjs = require('bcryptjs');
 const Usuario = require('../models/authModel');
 const verificarToken = require('../middleware/authMiddleware');
 const { OAuth2Client } = require("google-auth-library");
+const { enviarEmail } = require("../services/emailService"); // serviço de e-mail
 require("dotenv").config();
 
-// Log para verificar variável de ambiente
+// Log para depuração
 console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -38,6 +39,15 @@ router.post('/register', async (req, res) => {
     });
 
     await novoUsuario.save();
+
+    // Enviar e-mail de boas-vindas
+    await enviarEmail(
+      email,
+      "Bem-vindo à RPA Moçambique!",
+      `<h1>Olá ${nome}!</h1>
+      <p>Seu cadastro foi realizado com sucesso!</p>
+      <p>Agora você pode fazer login na nossa plataforma.</p>`
+    );
 
     res.status(201).json({
       msg: 'Usuário registrado com sucesso',
@@ -82,6 +92,7 @@ router.post('/login', async (req, res) => {
     res.json({
       msg: 'Login bem-sucedido',
       token,
+      email: usuario.email, // ✅ corrigido
       usuario: { id: usuario._id, nome: usuario.nome, role: usuario.role },
       redirectUrl,
     });
@@ -111,7 +122,7 @@ router.post('/google', async (req, res) => {
     let usuario = await Usuario.findOne({ email });
 
     if (!usuario) {
-      const senhaAleatoria = await bcryptjs.hash(email + Date.now(), 10); // senha aleatória
+      const senhaAleatoria = await bcryptjs.hash(email + Date.now(), 10);
       usuario = new Usuario({
         nome: name,
         email,
@@ -121,6 +132,15 @@ router.post('/google', async (req, res) => {
         googleId: payload.sub
       });
       await usuario.save();
+
+      // Enviar e-mail ao criar conta via Google
+      await enviarEmail(
+        email,
+        "Bem-vindo à RPA Moçambique!",
+        `<h1>Olá ${name}!</h1>
+        <p>Seu cadastro foi realizado com sucesso via Google!</p>
+        <p>Agora você pode fazer login na nossa plataforma.</p>`
+      );
     }
 
     const jwtToken = jwt.sign(
@@ -132,6 +152,7 @@ router.post('/google', async (req, res) => {
     res.json({
       msg: "Login via Google bem-sucedido",
       token: jwtToken,
+      email: usuario.email, // ✅ corrigido
       usuario: { id: usuario._id, nome: usuario.nome, email: usuario.email, role: usuario.role }
     });
   } catch (error) {
@@ -140,6 +161,7 @@ router.post('/google', async (req, res) => {
   }
 });
 
+// Buscar usuários
 router.get('/usuarios', async (req, res) => {
   try {
     const { role } = req.query;
@@ -159,6 +181,7 @@ router.get('/usuarios', async (req, res) => {
   }
 });
 
+// Atualizar usuário
 router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
   const { nome, senha, email, role } = req.body;
@@ -203,6 +226,7 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   }
 });
 
+// Deletar usuário
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
 
@@ -222,6 +246,7 @@ router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   }
 });
 
+// Rota protegida
 router.get('/protegida', verificarToken, (req, res) => {
   res.json({ msg: 'Acesso autorizado', usuario: req.usuario });
 });
