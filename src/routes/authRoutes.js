@@ -15,6 +15,7 @@ console.log("✅ GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
 // Função utilitária para gerar JWT
 function gerarTokenJWT(payload, expiresIn = '7d') {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+  
 }
 
 // =======================

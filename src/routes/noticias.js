@@ -1,20 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs-extra');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs-extra');
+const noticiasModel = require('../models/noticiasModel');
 
-const DATA_FILE = './noticias.json';
+// Upload de imagens
 const UPLOAD_DIR = './uploads';
-
-// Cria a pasta de uploads se não existir
 fs.ensureDirSync(UPLOAD_DIR);
 
-// Configuração do Multer
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOAD_DIR);
-  },
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
@@ -22,102 +18,83 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Função para ler notícias
-const lerNoticias = async () => {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-};
-
-// Função para salvar notícias
-const salvarNoticias = async (noticias) => {
-  await fs.writeFile(DATA_FILE, JSON.stringify(noticias, null, 2));
-};
-
-// Listar todas as notícias
+// Listar notícias
 router.get('/', async (req, res) => {
-  const noticias = await lerNoticias();
-  res.json(noticias);
+  try {
+    const noticias = await noticiasModel.find().sort({ data: -1 });
+    res.json(noticias);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Criar nova notícia com upload de imagem
+// Criar notícia
 router.post('/', upload.single('imagem'), async (req, res) => {
-  const { titulo, resumo, conteudo, data } = req.body;
+  try {
+    const { titulo, resumo, conteudo, data } = req.body;
+    if (!titulo || !resumo || !conteudo)
+      return res.status(400).json({ error: 'Campos obrigatórios faltando' });
 
-  if (!titulo || !resumo || !conteudo) {
-    return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+    const novaNoticia = new noticiasModel({
+      titulo,
+      resumo,
+      conteudo,
+      data: data || new Date(),
+      imagem: req.file ? `/uploads/${req.file.filename}` : null
+    });
+
+    await novaNoticia.save();
+    res.status(201).json(novaNoticia);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const noticias = await lerNoticias();
-
-  const novaNoticia = {
-    id: Date.now(),
-    titulo,
-    resumo,
-    conteudo,
-    data: data || new Date().toLocaleDateString(),
-    imagem: req.file ? `/uploads/${req.file.filename}` : null
-  };
-
-  noticias.push(novaNoticia);
-  await salvarNoticias(noticias);
-  res.status(201).json(novaNoticia);
 });
 
-// Editar notícia (também permite atualizar imagem)
+// Editar notícia
 router.put('/:id', upload.single('imagem'), async (req, res) => {
-  const id = parseInt(req.params.id);
-  const noticias = await lerNoticias();
-  const index = noticias.findIndex(n => n.id === id);
-  if (index === -1) return res.status(404).json({ error: 'Notícia não encontrada' });
+  try {
+    const atualizacao = { ...req.body };
+    if (req.file) atualizacao.imagem = `/uploads/${req.file.filename}`;
 
-  const atualizacao = { ...req.body };
-  if (req.file) {
-    atualizacao.imagem = `/uploads/${req.file.filename}`;
+    const noticia = await noticiasModel.findByIdAndUpdate(req.params.id, atualizacao, { new: true });
+    if (!noticia) return res.status(404).json({ error: 'Notícia não encontrada' });
+
+    res.json(noticia);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  noticias[index] = { ...noticias[index], ...atualizacao };
-  await salvarNoticias(noticias);
-  res.json(noticias[index]);
 });
 
 // Remover notícia
 router.delete('/:id', async (req, res) => {
-  const id = parseInt(req.params.id);
-  let noticias = await lerNoticias();
+  try {
+    const noticia = await noticiasModel.findByIdAndDelete(req.params.id);
+    if (!noticia) return res.status(404).json({ error: 'Notícia não encontrada' });
 
-  const noticia = noticias.find(n => n.id === id);
-  if (noticia?.imagem) {
-    // remove a imagem do servidor
-    const filePath = path.join(__dirname, '..', noticia.imagem);
-    fs.remove(filePath).catch(() => {});
+    if (noticia.imagem) {
+      const filePath = path.join(__dirname, '..', noticia.imagem);
+      fs.remove(filePath).catch(() => {});
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  noticias = noticias.filter(n => n.id !== id);
-  await salvarNoticias(noticias);
-  res.json({ success: true });
 });
 
-// Atualizar apenas visualizações (incremento no backend)
+// Incrementar visualizações
 router.patch('/:id', async (req, res) => {
-  const id = parseInt(req.params.id);
-  const noticias = await lerNoticias();
-  const index = noticias.findIndex(n => n.id === id);
+  try {
+    const noticia = await noticiasModel.findById(req.params.id);
+    if (!noticia) return res.status(404).json({ error: 'Notícia não encontrada' });
 
-  if (index === -1) {
-    return res.status(404).json({ error: 'Notícia não encontrada' });
+    noticia.visualizacoes = (noticia.visualizacoes || 0) + 1;
+    await noticia.save();
+
+    res.json({ success: true, visualizacoes: noticia.visualizacoes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // Inicializa caso não exista ainda
-  noticias[index].visualizacoes = (noticias[index].visualizacoes || 0) + 1;
-
-  await salvarNoticias(noticias);
-  res.json({ success: true, visualizacoes: noticias[index].visualizacoes });
 });
-
-
 
 module.exports = router;
