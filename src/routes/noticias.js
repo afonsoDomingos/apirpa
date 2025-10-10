@@ -1,167 +1,127 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs-extra');
 const noticiasModel = require('../models/noticiasModel');
+const { v2: cloudinary } = require('cloudinary');
+const streamifier = require('streamifier');
 
-const UPLOAD_DIR = './uploads';
-fs.ensureDirSync(UPLOAD_DIR);
-
-// Configuração do multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+// Configuração do Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const upload = multer({ 
+// Configuração do multer (sem salvar no disco)
+const storage = multer.memoryStorage();
+const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // máximo 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif/;
-    const ext = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mime = allowedTypes.test(file.mimetype);
-    if (ext && mime) return cb(null, true);
+    const ext = allowedTypes.test(file.mimetype);
+    if (ext) return cb(null, true);
     cb(new Error('Apenas imagens são permitidas'));
-  }
+  },
 });
+
+// Função para upload no Cloudinary
+const uploadToCloudinary = (buffer) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'noticias' },
+      (error, result) => (error ? reject(error) : resolve(result))
+    );
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
 
 // Listar notícias
 router.get('/', async (req, res) => {
-  console.log('GET / - Listando notícias');
   try {
     const noticias = await noticiasModel.find().sort({ data: -1 });
-    console.log(`Encontradas ${noticias.length} notícias`);
     res.json(noticias);
   } catch (err) {
-    console.error('Erro ao listar notícias:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // Criar notícia
-router.post('/', (req, res) => {
-  console.log('POST / - Criando notícia');
-  upload.single('imagem')(req, res, async (err) => {
-    if (err) {
-      console.error('Erro no upload:', err.message);
-      return res.status(400).json({ error: err.message });
+router.post('/', upload.single('imagem'), async (req, res) => {
+  try {
+    const { titulo, resumo, conteudo, data } = req.body;
+    if (!titulo || !resumo || !conteudo)
+      return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+
+    let imagemUrl = null;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      imagemUrl = result.secure_url;
     }
 
-    try {
-      const { titulo, resumo, conteudo, data } = req.body;
-      if (!titulo || !resumo || !conteudo) {
-        console.warn('Campos obrigatórios faltando');
-        return res.status(400).json({ error: 'Campos obrigatórios faltando' });
-      }
+    const novaNoticia = new noticiasModel({
+      titulo,
+      resumo,
+      conteudo,
+      data: data ? new Date(data) : new Date(),
+      imagem: imagemUrl,
+    });
 
-      let noticiaData = data ? new Date(data) : new Date();
-      if (isNaN(noticiaData.getTime())) noticiaData = new Date();
-
-      const novaNoticia = new noticiasModel({
-        titulo,
-        resumo,
-        conteudo,
-        data: noticiaData,
-        imagem: req.file ? `/uploads/${req.file.filename}` : null
-      });
-
-      await novaNoticia.save();
-      console.log('Notícia criada com sucesso:', novaNoticia._id);
-      res.status(201).json(novaNoticia);
-    } catch (err) {
-      console.error('Erro ao criar notícia:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+    await novaNoticia.save();
+    res.status(201).json(novaNoticia);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Editar notícia
-router.put('/:id', (req, res) => {
-  console.log(`PUT /${req.params.id} - Editando notícia`);
-  upload.single('imagem')(req, res, async (err) => {
-    if (err) {
-      console.error('Erro no upload:', err.message);
-      return res.status(400).json({ error: err.message });
+router.put('/:id', upload.single('imagem'), async (req, res) => {
+  try {
+    const noticia = await noticiasModel.findById(req.params.id);
+    if (!noticia)
+      return res.status(404).json({ error: 'Notícia não encontrada' });
+
+    let imagemUrl = noticia.imagem;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      imagemUrl = result.secure_url;
     }
 
-    try {
-      const noticia = await noticiasModel.findById(req.params.id);
-      if (!noticia) {
-        console.warn('Notícia não encontrada');
-        return res.status(404).json({ error: 'Notícia não encontrada' });
-      }
+    const noticiaAtualizada = await noticiasModel.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, imagem: imagemUrl },
+      { new: true }
+    );
 
-      const atualizacao = { ...req.body };
-      if (req.file) {
-        if (noticia.imagem) {
-          const oldPath = path.join(__dirname, '..', noticia.imagem);
-          await fs.remove(oldPath);
-          console.log('Imagem antiga removida:', oldPath);
-        }
-        atualizacao.imagem = `/uploads/${req.file.filename}`;
-      }
-
-      const noticiaAtualizada = await noticiasModel.findByIdAndUpdate(
-        req.params.id,
-        atualizacao,
-        { new: true }
-      );
-
-      console.log('Notícia atualizada com sucesso:', noticiaAtualizada._id);
-      res.json(noticiaAtualizada);
-    } catch (err) {
-      console.error('Erro ao atualizar notícia:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+    res.json(noticiaAtualizada);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Remover notícia
 router.delete('/:id', async (req, res) => {
-  console.log(`DELETE /${req.params.id} - Removendo notícia`);
   try {
     const noticia = await noticiasModel.findByIdAndDelete(req.params.id);
-    if (!noticia) {
-      console.warn('Notícia não encontrada');
+    if (!noticia)
       return res.status(404).json({ error: 'Notícia não encontrada' });
-    }
-
-    if (noticia.imagem) {
-      const filePath = path.join(__dirname, '..', noticia.imagem);
-      await fs.remove(filePath);
-      console.log('Imagem removida:', filePath);
-    }
-
-    console.log('Notícia removida com sucesso:', noticia._id);
     res.json({ success: true });
   } catch (err) {
-    console.error('Erro ao remover notícia:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // Incrementar visualizações
 router.patch('/:id', async (req, res) => {
-  console.log(`PATCH /${req.params.id} - Incrementando visualizações`);
   try {
     const noticia = await noticiasModel.findByIdAndUpdate(
       req.params.id,
       { $inc: { visualizacoes: 1 } },
       { new: true }
     );
-    if (!noticia) {
-      console.warn('Notícia não encontrada');
+    if (!noticia)
       return res.status(404).json({ error: 'Notícia não encontrada' });
-    }
-
-    console.log('Visualizações atualizadas:', noticia.visualizacoes);
     res.json({ success: true, visualizacoes: noticia.visualizacoes });
   } catch (err) {
-    console.error('Erro ao incrementar visualizações:', err);
     res.status(500).json({ error: err.message });
   }
 });
