@@ -5,6 +5,8 @@ const noticiasModel = require('../models/noticiasModel');
 const { v2: cloudinary } = require('cloudinary');
 const streamifier = require('streamifier');
 
+const API_BASE = process.env.API_BASE_URL || "https://apirpa.onrender.com";
+
 // Configuração do Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -12,7 +14,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configuração do multer (sem salvar no disco)
+// Multer (memória)
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
@@ -25,7 +27,7 @@ const upload = multer({
   },
 });
 
-// Função para upload no Cloudinary
+// Upload para Cloudinary
 const uploadToCloudinary = (buffer) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -39,7 +41,15 @@ const uploadToCloudinary = (buffer) =>
 router.get('/', async (req, res) => {
   try {
     const noticias = await noticiasModel.find().sort({ data: -1 });
-    res.json(noticias);
+    const noticiasComUrl = noticias.map(noticia => ({
+      ...noticia.toObject(),
+      imagem: noticia.imagem
+        ? noticia.imagem.startsWith("http")
+          ? noticia.imagem
+          : `${API_BASE}/${noticia.imagem}`
+        : null
+    }));
+    res.json(noticiasComUrl);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
