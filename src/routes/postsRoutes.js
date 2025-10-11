@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Post = require('../models/postModel');
-const verificarToken = require('../middleware/authMiddleware'); // middleware JWT
+const verificarToken = require('../middleware/authMiddleware');
 
-// Listar todos os posts (mais recentes primeiro)
+// Listar posts
 router.get('/', async (req, res) => {
   try {
     const posts = await Post.find()
@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Criar novo post
+// Criar post
 router.post('/', verificarToken, async (req, res) => {
   try {
     const { conteudo } = req.body;
@@ -27,8 +27,12 @@ router.post('/', verificarToken, async (req, res) => {
 
     const post = new Post({ autor: req.usuario.id, conteudo });
     await post.save();
-
     const populatedPost = await post.populate('autor', 'nome initials role');
+
+    // 🔴 Emite evento em tempo real
+    const io = req.app.get('io');
+    if (io) io.emit('novoPost', populatedPost);
+
     res.status(201).json(populatedPost);
   } catch (error) {
     console.error('Erro ao criar post:', error);
@@ -48,6 +52,10 @@ router.put('/:postId/like', verificarToken, async (req, res) => {
     else post.likes.splice(index, 1);
 
     await post.save();
+
+    const io = req.app.get('io');
+    if (io) io.emit('postLiked', { postId: post._id, likes: post.likes }); // 🔴 emite atualização
+
     res.json(post);
   } catch (error) {
     console.error('Erro ao curtir post:', error);
@@ -72,6 +80,9 @@ router.post('/:postId/replies', verificarToken, async (req, res) => {
     await post.save();
     await post.populate('replies.autor', 'nome initials role');
 
+    const io = req.app.get('io');
+    if (io) io.emit('novaResposta', { postId: post._id, replies: post.replies }); // 🔴 evento em tempo real
+
     res.status(201).json(post);
   } catch (error) {
     console.error('Erro ao adicionar resposta:', error);
@@ -91,6 +102,10 @@ router.delete('/:postId', verificarToken, async (req, res) => {
     }
 
     await post.remove();
+
+    const io = req.app.get('io');
+    if (io) io.emit('postDeletado', { postId }); // 🔴 broadcast para remover no front
+
     res.json({ message: 'Post deletado com sucesso' });
   } catch (error) {
     console.error('Erro ao deletar post:', error);
@@ -114,6 +129,10 @@ router.delete('/:postId/replies/:replyId', verificarToken, async (req, res) => {
 
     reply.remove();
     await post.save();
+
+    const io = req.app.get('io');
+    if (io) io.emit('respostaDeletada', { postId, replyId }); // 🔴 evento ao apagar reply
+
     res.json(post);
   } catch (error) {
     console.error('Erro ao deletar resposta:', error);
