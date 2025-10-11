@@ -1,17 +1,42 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
-const replySchema = new mongoose.Schema({
-  autor: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
-  conteudo: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now }
-});
+const replySchema = new mongoose.Schema(
+  {
+    autor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Usuario',
+      required: true
+    },
+    conteudo: {
+      type: String,
+      required: true,
+      trim: true
+    }
+  },
+  { timestamps: true }
+);
 
-const postSchema = new mongoose.Schema({
-  autor: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
-  conteudo: { type: String, required: true },
-  likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }],
-  replies: [replySchema],
-  createdAt: { type: Date, default: Date.now }
-});
+const postSchema = new mongoose.Schema(
+  {
+    autor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Usuario',
+      required: true
+    },
+    conteudo: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    likes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Usuario'
+      }
+    ],
+    replies: [replySchema]
+  },
+  { timestamps: true }
+);
 
-export default mongoose.models.Post || mongoose.model('Post', postSchema);
+module.exports = mongoose.model('Post', postSchema);
