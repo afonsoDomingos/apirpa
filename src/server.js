@@ -15,6 +15,8 @@ const pagamentoRoutes = require('./routes/pagamentoRoutes');
 // Rotas de notícias
 const noticiasRouter = require('./routes/noticias');
 
+const postsRoutes = require('./routes/postsRoutes');
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -61,9 +63,7 @@ app.use('/api', solicitacoesRouter);
 app.use('/api/documentosguardados', documentosGuardadosRoutes);
 app.use('/api/pagamentos', pagamentoRoutes);
 app.use('/api/noticias', noticiasRouter);
-
-
-
+app.use('/api/posts', postsRoutes);
 app.use('/uploads', express.static('uploads'));
 
 
