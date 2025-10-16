@@ -99,26 +99,34 @@ router.get("/", verificarToken, async (req, res) => {
   }
 
   try {
-    const pagamentos = await Pagamento.find().sort({ dataPagamento: -1 });
+    // ✅ Popula nome e email do usuário associado ao pagamento
+    const pagamentos = await Pagamento.find()
+      .populate("usuarioId", "nome email")
+      .sort({ dataPagamento: -1 });
 
-    // Adicionando status e validade para cada pagamento
     const hoje = new Date();
+
     const pagamentosComValidade = pagamentos.map(pag => {
       const validade = new Date(pag.dataPagamento);
       const nomePacote = pag.pacote?.toLowerCase().trim();
       const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+
       validade.setDate(validade.getDate() + diasDeValidade);
 
       const diffMs = validade - hoje;
       const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
       const expirado = diasRestantes < 0;
-      const status = expirado ? 'expirado' : 'pago';
+      const status = expirado ? "expirado" : "pago";
 
       return {
         ...pag._doc,
         validade,
         diasRestantes,
-        status
+        status,
+        usuario: pag.usuarioId ? {
+          nome: pag.usuarioId.nome,
+          email: pag.usuarioId.email
+        } : null
       };
     });
 
@@ -133,6 +141,7 @@ router.get("/", verificarToken, async (req, res) => {
     res.status(500).json({ sucesso: false, mensagem: "Erro ao buscar pagamentos." });
   }
 });
+
 
 // Buscar pagamento por ID (dono ou admin)
 router.get("/:id", verificarToken, async (req, res) => {
