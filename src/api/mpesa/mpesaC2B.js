@@ -37,6 +37,17 @@ generateCode() {
     async payment(phone, amount) {
         console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}`);
 
+
+         // ✅ Garantir que o número está no formato internacional (25884XXXXXXX)
+    if (!phone.startsWith('258')) {
+        if (/^8\d{8}$/.test(phone)) {
+            phone = '258' + phone;
+            console.log(`[mpesaC2B] Prefixo 258 adicionado: ${phone}`);
+        } else {
+            throw new Error('[mpesaC2B] Número de telefone inválido. Deve começar com 84 ou 85 e ter 9 dígitos.');
+        }
+    }
+
         const code = this.generateCode();
 
         const reference = 'RpaLive';
