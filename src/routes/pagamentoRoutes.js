@@ -9,7 +9,8 @@ router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, dadosCartao } = req.body;
   const usuarioId = req.usuario.id;
 
-  if (!pacote || !method || !amount) {
+  // Validação: permite amount = 0 para plano gratuito
+  if (!pacote || !method || amount === undefined) {
     return res.status(400).json({
       sucesso: false,
       mensagem: 'Pacote, método e valor são obrigatórios.',
@@ -17,32 +18,59 @@ router.post('/processar', verificarToken, async (req, res) => {
   }
 
   try {
-    const pay = await Gateway.payment(method, phone, amount, type);
+    // ✅ TRATAMENTO ESPECIAL PARA PLANO GRATUITO
+    if (amount === 0 && method === 'gratuito' && pacote === 'free') {
+      const novoPagamento = new Pagamento({
+        pacote: 'free',
+        metodoPagamento: 'gratuito',
+        valor: 0,
+        telefone: null,
+        dadosCartao: null,
+        status: 'aprovado',
+        usuarioId,
+        tipoPagamento: type,
+        dataPagamento: new Date(),
+        gatewayResponse: { message: 'Plano gratuito ativado' }
+      });
 
-    if (pay.status !== 'success') {
-      return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
+      const pagamentoSalvo = await novoPagamento.save();
+
+      return res.status(201).json({
+        sucesso: true,
+        mensagem: 'Plano gratuito ativado com sucesso.',
+        pagamento: pagamentoSalvo,
+      });
     }
 
-    const novoPagamento = new Pagamento({
-      pacote,
-      metodoPagamento: method,
-      valor: amount,
-      telefone: phone || null,
-      dadosCartao: dadosCartao || null,
-      status: 'aprovado',
-      usuarioId,
-      tipoPagamento: type,
-      dataPagamento: new Date(),
-      gatewayResponse: pay.data || null,
-    });
+    // Para pagamentos pagos, processa normalmente
+    if (amount > 0) {
+      const pay = await Gateway.payment(method, phone, amount, type);
 
-    const pagamentoSalvo = await novoPagamento.save();
+      if (pay.status !== 'success') {
+        return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
+      }
 
-    return res.status(201).json({
-      sucesso: true,
-      mensagem: 'Pagamento realizado com sucesso.',
-      pagamento: pagamentoSalvo,
-    });
+      const novoPagamento = new Pagamento({
+        pacote,
+        metodoPagamento: method,
+        valor: amount,
+        telefone: phone || null,
+        dadosCartao: dadosCartao || null,
+        status: 'aprovado',
+        usuarioId,
+        tipoPagamento: type,
+        dataPagamento: new Date(),
+        gatewayResponse: pay.data || null,
+      });
+
+      const pagamentoSalvo = await novoPagamento.save();
+
+      return res.status(201).json({
+        sucesso: true,
+        mensagem: 'Pagamento realizado com sucesso.',
+        pagamento: pagamentoSalvo,
+      });
+    }
 
   } catch (error) {
     console.error('Erro geral ao processar pagamento:', error);
@@ -61,7 +89,14 @@ router.get("/meus", verificarToken, async (req, res) => {
     const pagamentosComValidade = pagamentos.map(pag => {
       const validade = new Date(pag.dataPagamento);
       const nomePacote = pag.pacote?.toLowerCase().trim();
-      const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+      
+      // ✅ PLANO GRATUITO: 30 dias de validade (pode ajustar conforme necessário)
+      let diasDeValidade = 30; // default para free
+      if (nomePacote === "anual") {
+        diasDeValidade = 365;
+      } else if (nomePacote === "mensal") {
+        diasDeValidade = 30;
+      } // free já tem 30 dias
 
       validade.setDate(validade.getDate() + diasDeValidade);
 
@@ -99,7 +134,6 @@ router.get("/", verificarToken, async (req, res) => {
   }
 
   try {
-    // ✅ Popula nome e email do usuário associado ao pagamento
     const pagamentos = await Pagamento.find()
       .populate("usuarioId", "nome email")
       .sort({ dataPagamento: -1 });
@@ -109,7 +143,14 @@ router.get("/", verificarToken, async (req, res) => {
     const pagamentosComValidade = pagamentos.map(pag => {
       const validade = new Date(pag.dataPagamento);
       const nomePacote = pag.pacote?.toLowerCase().trim();
-      const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+      
+      // ✅ Suporte para plano gratuito no admin
+      let diasDeValidade = 30; // default para free
+      if (nomePacote === "anual") {
+        diasDeValidade = 365;
+      } else if (nomePacote === "mensal") {
+        diasDeValidade = 30;
+      }
 
       validade.setDate(validade.getDate() + diasDeValidade);
 
@@ -141,7 +182,6 @@ router.get("/", verificarToken, async (req, res) => {
     res.status(500).json({ sucesso: false, mensagem: "Erro ao buscar pagamentos." });
   }
 });
-
 
 // Buscar pagamento por ID (dono ou admin)
 router.get("/:id", verificarToken, async (req, res) => {
@@ -186,7 +226,13 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
     if (!pagamentoMaisRecente) return res.json({ ativa: false, diasRestantes: null });
 
     const nomePacote = pagamentoMaisRecente.pacote?.toLowerCase().trim();
-    const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+    let diasDeValidade = 30; // default para free
+    
+    if (nomePacote === "anual") {
+      diasDeValidade = 365;
+    } else if (nomePacote === "mensal") {
+      diasDeValidade = 30;
+    } // free já tem 30 dias
 
     const validade = new Date(pagamentoMaisRecente.dataPagamento);
     validade.setDate(validade.getDate() + diasDeValidade);
