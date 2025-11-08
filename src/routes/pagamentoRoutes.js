@@ -2,25 +2,43 @@ const express = require('express');
 const router = express.Router();
 const verificarToken = require('../middleware/authMiddleware');
 const Pagamento = require('../models/pagamentoModel');
+const Anuncio = require('../models/Anuncio');
 const Gateway = require('../services/gateway'); 
 
-// Rota POST para processar pagamento
+// ROTA PRINCIPAL: PROCESSAR PAGAMENTO + ANÚNCIO
 router.post('/processar', verificarToken, async (req, res) => {
-  let { method, phone, amount, type, pacote, dadosCartao } = req.body;
+  let { method, phone, amount, type, pacote, dadosCartao, anuncioData } = req.body;
   const usuarioId = req.usuario.id;
 
-  // Validação: permite amount = 0 para plano gratuito
-  if (!pacote || !method || amount === undefined) {
+  // Validação
+  if (!method || amount === undefined) {
     return res.status(400).json({
       sucesso: false,
-      mensagem: 'Pacote, método e valor são obrigatórios.',
+      mensagem: 'Método e valor são obrigatórios.',
+    });
+  }
+
+  // Validação específica para anúncios
+  if (anuncioData && (!anuncioData.name || !anuncioData.description || !anuncioData.price || !anuncioData.ctaLink)) {
+    return res.status(400).json({
+      sucesso: false,
+      mensagem: 'Dados do anúncio incompletos.',
     });
   }
 
   try {
-    // ✅ TRATAMENTO ESPECIAL PARA PLANO GRATUITO
+    // PLANO GRATUITO (opcional para anúncios)
     if (amount === 0 && method === 'gratuito' && pacote === 'free') {
-      const novoPagamento = new Pagamento({
+      const anuncio = new Anuncio({
+        ...anuncioData,
+        weeks: 1,
+        amount: 0,
+        userId: usuarioId,
+        status: 'active',
+      });
+      await anuncio.save();
+
+      const pagamento = new Pagamento({
         pacote: 'free',
         metodoPagamento: 'gratuito',
         valor: 0,
@@ -28,61 +46,85 @@ router.post('/processar', verificarToken, async (req, res) => {
         dadosCartao: null,
         status: 'aprovado',
         usuarioId,
-        tipoPagamento: type,
+        tipoPagamento: type || 'anuncio',
         dataPagamento: new Date(),
-        gatewayResponse: { message: 'Plano gratuito ativado' }
+        gatewayResponse: { message: 'Anúncio gratuito ativado' },
+        anuncioId: anuncio._id
       });
 
-      const pagamentoSalvo = await novoPagamento.save();
+      await pagamento.save();
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: 'Plano gratuito ativado com sucesso.',
-        pagamento: pagamentoSalvo,
+        mensagem: 'Anúncio gratuito ativado!',
+        pagamento,
+        anuncio
       });
     }
 
-    // Para pagamentos pagos, processa normalmente
+    // PAGAMENTOS PAGOS (M-Pesa / Emola)
     if (amount > 0) {
       const pay = await Gateway.payment(method, phone, amount, type);
 
       if (pay.status !== 'success') {
-        return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
+        return res.status(400).json({ 
+          sucesso: false, 
+          mensagem: 'Pagamento falhou', 
+          detalhes: pay 
+        });
       }
 
+      // Criar anúncio
+      const anuncio = new Anuncio({
+        ...anuncioData,
+        weeks: anuncioData.weeks || 1,
+        amount,
+        userId: usuarioId,
+        status: 'active', // ativar após pagamento
+      });
+      await anuncio.save();
+
+      // Salvar pagamento
       const novoPagamento = new Pagamento({
-        pacote,
+        pacote: pacote || 'anuncio',
         metodoPagamento: method,
         valor: amount,
         telefone: phone || null,
         dadosCartao: dadosCartao || null,
         status: 'aprovado',
         usuarioId,
-        tipoPagamento: type,
+        tipoPagamento: type || 'anuncio',
         dataPagamento: new Date(),
         gatewayResponse: pay.data || null,
+        anuncioId: anuncio._id // LINK COM ANÚNCIO
       });
 
       const pagamentoSalvo = await novoPagamento.save();
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: 'Pagamento realizado com sucesso.',
+        mensagem: 'Pagamento e anúncio ativados com sucesso!',
         pagamento: pagamentoSalvo,
+        anuncio
       });
     }
 
   } catch (error) {
-    console.error('Erro geral ao processar pagamento:', error);
-    return res.status(500).json({ sucesso: false, mensagem: 'Erro interno do servidor.' });
+    console.error('Erro ao processar pagamento/anúncio:', error);
+    return res.status(500).json({ 
+      sucesso: false, 
+      mensagem: 'Erro interno do servidor.' 
+    });
   }
 });
 
-// Listar pagamentos do usuário logado
+// LISTAR PAGAMENTOS DO USUÁRIO (COM ANÚNCIOS)
 router.get("/meus", verificarToken, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
-    const pagamentos = await Pagamento.find({ usuarioId }).sort({ dataPagamento: -1 });
+    const pagamentos = await Pagamento.find({ usuarioId })
+      .sort({ dataPagamento: -1 })
+      .populate('anuncioId', 'name image status');
 
     const hoje = new Date();
 
@@ -90,13 +132,9 @@ router.get("/meus", verificarToken, async (req, res) => {
       const validade = new Date(pag.dataPagamento);
       const nomePacote = pag.pacote?.toLowerCase().trim();
       
-      // ✅ PLANO GRATUITO: 30 dias de validade (pode ajustar conforme necessário)
-      let diasDeValidade = 30; // default para free
-      if (nomePacote === "anual") {
-        diasDeValidade = 365;
-      } else if (nomePacote === "mensal") {
-        diasDeValidade = 30;
-      } // free já tem 30 dias
+      let diasDeValidade = 30;
+      if (nomePacote === "anual") diasDeValidade = 365;
+      else if (nomePacote === "mensal") diasDeValidade = 30;
 
       validade.setDate(validade.getDate() + diasDeValidade);
 
@@ -109,7 +147,13 @@ router.get("/meus", verificarToken, async (req, res) => {
         ...pag._doc,
         validade,
         diasRestantes,
-        status
+        status,
+        anuncio: pag.anuncioId ? {
+          id: pag.anuncioId._id,
+          name: pag.anuncioId.name,
+          image: pag.anuncioId.image,
+          status: pag.anuncioId.status
+        } : null
       };
     });
 
@@ -119,7 +163,7 @@ router.get("/meus", verificarToken, async (req, res) => {
       pagamentos: pagamentosComValidade,
     });
   } catch (error) {
-    console.error("Erro ao buscar pagamentos do usuário:", error);
+    console.error("Erro ao buscar pagamentos:", error);
     res.status(500).json({
       sucesso: false,
       mensagem: "Erro ao buscar pagamentos.",
@@ -127,7 +171,7 @@ router.get("/meus", verificarToken, async (req, res) => {
   }
 });
 
-// Rota GET para ADMIN: listar todos os pagamentos
+// ADMIN: LISTAR TODOS
 router.get("/", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") {
     return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
@@ -136,6 +180,7 @@ router.get("/", verificarToken, async (req, res) => {
   try {
     const pagamentos = await Pagamento.find()
       .populate("usuarioId", "nome email")
+      .populate('anuncioId', 'name image status')
       .sort({ dataPagamento: -1 });
 
     const hoje = new Date();
@@ -144,13 +189,9 @@ router.get("/", verificarToken, async (req, res) => {
       const validade = new Date(pag.dataPagamento);
       const nomePacote = pag.pacote?.toLowerCase().trim();
       
-      // ✅ Suporte para plano gratuito no admin
-      let diasDeValidade = 30; // default para free
-      if (nomePacote === "anual") {
-        diasDeValidade = 365;
-      } else if (nomePacote === "mensal") {
-        diasDeValidade = 30;
-      }
+      let diasDeValidade = 30;
+      if (nomePacote === "anual") diasDeValidade = 365;
+      else if (nomePacote === "mensal") diasDeValidade = 30;
 
       validade.setDate(validade.getDate() + diasDeValidade);
 
@@ -167,6 +208,12 @@ router.get("/", verificarToken, async (req, res) => {
         usuario: pag.usuarioId ? {
           nome: pag.usuarioId.nome,
           email: pag.usuarioId.email
+        } : null,
+        anuncio: pag.anuncioId ? {
+          id: pag.anuncioId._id,
+          name: pag.anuncioId.name,
+          image: pag.anuncioId.image,
+          status: pag.anuncioId.status
         } : null
       };
     });
@@ -183,10 +230,11 @@ router.get("/", verificarToken, async (req, res) => {
   }
 });
 
-// Buscar pagamento por ID (dono ou admin)
+// BUSCAR POR ID
 router.get("/:id", verificarToken, async (req, res) => {
   try {
-    const pagamento = await Pagamento.findById(req.params.id);
+    const pagamento = await Pagamento.findById(req.params.id)
+      .populate('anuncioId', 'name image status');
     if (!pagamento) return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
 
     if (pagamento.usuarioId.toString() !== req.usuario.id && req.usuario.role !== "admin") {
@@ -200,13 +248,18 @@ router.get("/:id", verificarToken, async (req, res) => {
   }
 });
 
-// Excluir pagamento (admin)
+// EXCLUIR (ADMIN)
 router.delete("/:id", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") {
     return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
   }
 
   try {
+    const pagamento = await Pagamento.findById(req.params.id);
+    if (pagamento && pagamento.anuncioId) {
+      await Anuncio.findByIdAndUpdate(pagamento.anuncioId, { status: 'paused' });
+    }
+
     const pagamentoRemovido = await Pagamento.findByIdAndDelete(req.params.id);
     if (!pagamentoRemovido) return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
 
@@ -217,7 +270,7 @@ router.delete("/:id", verificarToken, async (req, res) => {
   }
 });
 
-// Verificar assinatura ativa
+// VERIFICAR ASSINATURA
 router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
@@ -226,13 +279,9 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
     if (!pagamentoMaisRecente) return res.json({ ativa: false, diasRestantes: null });
 
     const nomePacote = pagamentoMaisRecente.pacote?.toLowerCase().trim();
-    let diasDeValidade = 30; // default para free
-    
-    if (nomePacote === "anual") {
-      diasDeValidade = 365;
-    } else if (nomePacote === "mensal") {
-      diasDeValidade = 30;
-    } // free já tem 30 dias
+    let diasDeValidade = 30;
+    if (nomePacote === "anual") diasDeValidade = 365;
+    else if (nomePacote === "mensal") diasDeValidade = 30;
 
     const validade = new Date(pagamentoMaisRecente.dataPagamento);
     validade.setDate(validade.getDate() + diasDeValidade);
