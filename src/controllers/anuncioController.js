@@ -1,4 +1,5 @@
 const Anuncio = require('../models/Anuncio');
+const mongoose = require('mongoose'); // Adicionado para verificar conexão
 const multer = require('multer');
 const { storageAnuncios } = require('../config/cloudinary');
 
@@ -6,9 +7,9 @@ const upload = multer({
   storage: storageAnuncios,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Tipo de arquivo inválido. Use JPEG ou PNG.'));
+      return cb(new Error('Tipo de arquivo inválido. Use JPEG, PNG ou WEBP.'));
     }
     cb(null, true);
   }
@@ -17,6 +18,12 @@ const upload = multer({
 const criarAnuncio = (req, res) => {
   console.log('POST /api/anuncios - Criando anúncio');
   console.log('Usuário:', req.usuario?.id);
+
+  // Verificar conexão com MongoDB
+  if (mongoose.connection.readyState !== 1) {
+    console.error('MongoDB não está conectado');
+    return res.status(500).json({ sucesso: false, mensagem: 'Erro de conexão com o banco de dados' });
+  }
 
   // Validar req.usuario
   if (!req.usuario?.id) {
@@ -32,7 +39,15 @@ const criarAnuncio = (req, res) => {
 
     try {
       const { name, description, price, ctaLink, weeks = 1, imageUrl } = req.body;
-      console.log('Payload recebido:', { name, description, price, ctaLink, weeks, imageUrl, file: req.file });
+      console.log('Payload recebido:', {
+        name,
+        description,
+        price,
+        ctaLink,
+        weeks,
+        imageUrl,
+        file: req.file ? { path: req.file.path, mimetype: req.file.mimetype, size: req.file.size } : null
+      });
 
       // Validação dos campos
       if (!name || name.trim().length < 3) {
@@ -66,11 +81,11 @@ const criarAnuncio = (req, res) => {
         status: 'pending'
       });
 
-      console.log('Anúncio a ser salvo:', anuncio);
+      console.log('Anúncio a ser salvo:', anuncio.toObject());
 
       await anuncio.save();
       console.log('Anúncio criado:', anuncio._id);
-      res.status(201).json({ sucesso: true, anuncioId: anuncio._id, anuncio });
+      res.status(201).json({ sucesso: true, anuncioId: anuncio._id, anuncio: anuncio.toObject() });
     } catch (error) {
       console.error('Erro ao salvar anúncio:', error);
       res.status(500).json({ sucesso: false, mensagem: `Erro ao criar anúncio: ${error.message}` });
@@ -87,7 +102,7 @@ const meusAnuncios = async (req, res) => {
     res.json(anuncios);
   } catch (error) {
     console.error('Erro ao buscar:', error);
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar' });
+    res.status(500).json({ sucesso: false, mensagem: `Erro ao carregar: ${error.message}` });
   }
 };
 
@@ -99,7 +114,7 @@ const anunciosAtivos = async (req, res) => {
     res.json(anuncios);
   } catch (error) {
     console.error('Erro ao carregar ativos:', error);
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar' });
+    res.status(500).json({ sucesso: false, mensagem: `Erro ao carregar: ${error.message}` });
   }
 };
 
@@ -160,7 +175,7 @@ const removerAnuncio = async (req, res) => {
     res.json({ sucesso: true, mensagem: 'Removido com sucesso' });
   } catch (error) {
     console.error('Erro ao remover:', error);
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao remover' });
+    res.status(500).json({ sucesso: false, mensagem: `Erro ao remover: ${error.message}` });
   }
 };
 
