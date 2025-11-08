@@ -18,6 +18,7 @@ const noticiasRouter = require('./routes/noticias');
 const postsRoutes = require('./routes/postsRoutes');
 const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
+const anunciosRouter = require('./routes/anuncios');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -31,6 +32,7 @@ console.log("Variáveis de ambiente carregadas:");
 console.log(`API Key: ${apiKey ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log(`Public Key: ${publicKey ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log(`M-Pesa C2B URL: ${mpesaC2bUrl ? 'Carregada' : 'NÃO CARREGADA'}`);
+console.log('Rotas de anúncios integradas em /api/anuncios');
 
 // Middlewares
 app.use(express.json());
@@ -81,6 +83,8 @@ app.use('/api/noticias', noticiasRouter);
 app.use('/api/posts', postsRoutes);
 app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
+app.use('/api/anuncios', anunciosRouter);
+
 app.use('/uploads', express.static('uploads'));
 
 // Contador de documentos

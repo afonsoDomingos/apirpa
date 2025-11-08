@@ -1,0 +1,160 @@
+const Anuncio = require('../models/Anuncio');
+const multer = require('multer');
+const { storageAnuncios } = require('../config/cloudinary');
+
+const upload = multer({
+  storage: storageAnuncios,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('image');
+
+// === CRIAR ANÚNCIO ===
+const criarAnuncio = (req, res) => {
+  console.log('POST /api/anuncios - Criando anúncio');
+  console.log('Usuário:', req.usuario.id);
+
+  upload(req, res, async (err) => {
+    if (err) {
+      console.log('Erro no upload:', err.message);
+      return res.status(400).json({ msg: err.message });
+    }
+
+    try {
+      const { name, description, price, ctaLink, weeks = 1 } = req.body;
+      const amount = weeks * 500;
+
+      if (!req.file) {
+        console.log('Imagem não enviada');
+        return res.status(400).json({ msg: 'Imagem obrigatória' });
+      }
+
+      const image = req.file.path;
+      console.log('Imagem salva no Cloudinary:', image);
+
+      const anuncio = new Anuncio({
+        name,
+        description,
+        price: Number(price),
+        ctaLink,
+        image,
+        weeks: Number(weeks),
+        amount,
+        userId: req.usuario.id,
+      });
+
+      await anuncio.save();
+      console.log('Anúncio criado:', anuncio._id);
+      res.status(201).json(anuncio);
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+      res.status(500).json({ msg: 'Erro ao criar anúncio' });
+    }
+  });
+};
+
+// === MEUS ANÚNCIOS ===
+const meusAnuncios = async (req, res) => {
+  console.log(`GET /api/anuncios/meus - Usuário: ${req.usuario.id}`);
+
+  try {
+    const anuncios = await Anuncio.find({ userId: req.usuario.id }).sort({ createdAt: -1 });
+    console.log(`Encontrados ${anuncios.length} anúncios`);
+    res.json(anuncios);
+  } catch (error) {
+    console.error('Erro ao buscar:', error);
+    res.status(500).json({ msg: 'Erro ao carregar' });
+  }
+};
+
+// === ANÚNCIOS ATIVOS (AdCard) ===
+const anunciosAtivos = async (req, res) => {
+  console.log('GET /api/anuncios/ativos - Buscando ativos');
+
+  try {
+    const anuncios = await Anuncio.find({ status: 'active' }).select('-userId');
+    console.log(`Encontrados ${anuncios.length} anúncios ativos`);
+    res.json(anuncios);
+  } catch (error) {
+    console.error('Erro ao carregar ativos:', error);
+    res.status(500).json({ msg: 'Erro ao carregar' });
+  }
+};
+
+// === ATUALIZAR ANÚNCIO ===
+const atualizarAnuncio = (req, res) => {
+  console.log(`PUT /api/anuncios/${req.params.id} - Usuário: ${req.usuario.id}`);
+
+  upload(req, res, async (err) => {
+    if (err) {
+      console.log('Erro no upload:', err.message);
+      return res.status(400).json({ msg: err.message });
+    }
+
+    try {
+      const { name, description, price, ctaLink, weeks } = req.body;
+      const updateData = {};
+
+      if (name) updateData.name = name;
+      if (description) updateData.description = description;
+      if (price) updateData.price = Number(price);
+      if (ctaLink) updateData.ctaLink = ctaLink;
+      if (weeks) {
+        updateData.weeks = Number(weeks);
+        updateData.amount = weeks * 500;
+      }
+
+      if (req.file) {
+        updateData.image = req.file.path;
+        console.log('Nova imagem salva:', updateData.image);
+      }
+
+      const anuncio = await Anuncio.findOneAndUpdate(
+        { _id: req.params.id, userId: req.usuario.id },
+        updateData,
+        { new: true, runValidators: true }
+      );
+
+      if (!anuncio) {
+        console.log('Anúncio não encontrado ou sem permissão');
+        return res.status(404).json({ msg: 'Anúncio não encontrado' });
+      }
+
+      console.log('Anúncio atualizado:', anuncio._id);
+      res.json(anuncio);
+    } catch (error) {
+      console.error('Erro ao atualizar:', error);
+      res.status(500).json({ msg: 'Erro ao atualizar anúncio' });
+    }
+  });
+};
+
+// === REMOVER ANÚNCIO ===
+const removerAnuncio = async (req, res) => {
+  const { id } = req.params;
+  console.log(`DELETE /api/anuncios/${id} - Usuário: ${req.usuario.id}`);
+
+  try {
+    const anuncio = await Anuncio.findOneAndDelete({
+      _id: id,
+      userId: req.usuario.id,
+    });
+
+    if (!anuncio) {
+      console.log('Anúncio não encontrado');
+      return res.status(404).json({ msg: 'Anúncio não encontrado' });
+    }
+
+    console.log('Anúncio removido:', id);
+    res.json({ msg: 'Removido com sucesso' });
+  } catch (error) {
+    console.error('Erro ao remover:', error);
+    res.status(500).json({ msg: 'Erro ao remover' });
+  }
+};
+
+module.exports = {
+  criarAnuncio,
+  meusAnuncios,
+  anunciosAtivos,
+  atualizarAnuncio,   // ← ADICIONADO
+  removerAnuncio,
+};
