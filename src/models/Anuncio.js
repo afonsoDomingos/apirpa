@@ -4,7 +4,7 @@ const anuncioSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
   price: { type: Number, required: true },
-  image: { type: String, required: true }, // URL Cloudinary
+  image: { type: String, required: true },
   ctaLink: { type: String, required: true },
   weeks: { type: Number, default: 1 },
   amount: { type: Number, required: true },
