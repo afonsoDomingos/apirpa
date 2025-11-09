@@ -7,7 +7,7 @@ const anuncioSchema = new mongoose.Schema({
   ctaLink: { type: String, required: true, trim: true },
   weeks: { type: Number, required: true, min: 1 },
   amount: { type: Number, required: true, min: 0 }, // Adicionado
-  image: { type: String, required: true },
+  image: { type: String, required: false, default: '' },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
   status: { type: String, enum: ['pending', 'active', 'expired'], default: 'pending' },
   createdAt: { type: Date, default: Date.now }

@@ -3,39 +3,36 @@ const router = express.Router();
 const verificarToken = require('../middleware/authMiddleware');
 const Pagamento = require('../models/pagamentoModel');
 const Anuncio = require('../models/Anuncio');
-const Gateway = require('../services/gateway'); 
+const Gateway = require('../services/gateway');
 
-// ROTA PRINCIPAL: PROCESSAR PAGAMENTO + ANÚNCIO
+// ROTA: PROCESSAR PAGAMENTO (ATIVA ANÚNCIO EXISTENTE)
 router.post('/processar', verificarToken, async (req, res) => {
-  let { method, phone, amount, type, pacote, dadosCartao, anuncioData } = req.body;
+  const { method, phone, amount, type, pacote, dadosCartao, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
   // Validação
-  if (!method || amount === undefined) {
+  if (!method || amount === undefined || !anuncioId) {
     return res.status(400).json({
       sucesso: false,
-      mensagem: 'Método e valor são obrigatórios.',
-    });
-  }
-
-  // Validação específica para anúncios
-  if (anuncioData && (!anuncioData.name || !anuncioData.description || !anuncioData.price || !anuncioData.ctaLink)) {
-    return res.status(400).json({
-      sucesso: false,
-      mensagem: 'Dados do anúncio incompletos.',
+      mensagem: 'Método, valor e ID do anúncio são obrigatórios.',
     });
   }
 
   try {
-    // PLANO GRATUITO (opcional para anúncios)
+    // 1. Buscar anúncio existente
+    const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
+    if (!anuncio) {
+      return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
+    }
+
+    // 2. Validar valor
+    if (amount !== anuncio.weeks * 500) {
+      return res.status(400).json({ sucesso: false, mensagem: 'Valor inconsistente com semanas.' });
+    }
+
+    // 3. PLANO GRATUITO
     if (amount === 0 && method === 'gratuito' && pacote === 'free') {
-      const anuncio = new Anuncio({
-        ...anuncioData,
-        weeks: 1,
-        amount: 0,
-        userId: usuarioId,
-        status: 'active',
-      });
+      anuncio.status = 'active';
       await anuncio.save();
 
       const pagamento = new Pagamento({
@@ -62,61 +59,56 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
     }
 
-    // PAGAMENTOS PAGOS (M-Pesa / Emola)
-    if (amount > 0) {
-      const pay = await Gateway.payment(method, phone, amount, type);
-
-      if (pay.status !== 'success') {
-        return res.status(400).json({ 
-          sucesso: false, 
-          mensagem: 'Pagamento falhou', 
-          detalhes: pay 
-        });
-      }
-
-      // Criar anúncio
-      const anuncio = new Anuncio({
-        ...anuncioData,
-        weeks: anuncioData.weeks || 1,
-        amount,
-        userId: usuarioId,
-        status: 'active', // ativar após pagamento
-      });
-      await anuncio.save();
-
-      // Salvar pagamento
-      const novoPagamento = new Pagamento({
-        pacote: pacote || 'anuncio',
-        metodoPagamento: method,
-        valor: amount,
-        telefone: phone || null,
-        dadosCartao: dadosCartao || null,
-        status: 'aprovado',
-        usuarioId,
-        tipoPagamento: type || 'anuncio',
-        dataPagamento: new Date(),
-        gatewayResponse: pay.data || null,
-        anuncioId: anuncio._id // LINK COM ANÚNCIO
-      });
-
-      const pagamentoSalvo = await novoPagamento.save();
-
-      return res.status(201).json({
-        sucesso: true,
-        mensagem: 'Pagamento e anúncio ativados com sucesso!',
-        pagamento: pagamentoSalvo,
-        anuncio
+    // 4. PAGAMENTO PAGO
+    const pay = await Gateway.payment(method, phone, amount, type);
+    if (!pay || pay.status !== 'success') {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Pagamento falhou',
+        detalhes: pay || {}
       });
     }
 
+    // Ativar anúncio
+    anuncio.status = 'active';
+    anuncio.amount = amount;
+    await anuncio.save();
+
+    // Salvar pagamento
+    const novoPagamento = new Pagamento({
+      pacote: pacote || 'anuncio',
+      metodoPagamento: method,
+      valor: amount,
+      telefone: phone,
+      dadosCartao: dadosCartao || null,
+      status: 'aprovado',
+      usuarioId,
+      tipoPagamento: type || 'anuncio',
+      dataPagamento: new Date(),
+      gatewayResponse: pay.data || null,
+      anuncioId: anuncio._id
+    });
+
+    const pagamentoSalvo = await novoPagamento.save();
+
+    return res.status(201).json({
+      sucesso: true,
+      mensagem: 'Pagamento e anúncio ativados com sucesso!',
+      pagamento: pagamentoSalvo,
+      anuncio
+    });
+
   } catch (error) {
-    console.error('Erro ao processar pagamento/anúncio:', error);
-    return res.status(500).json({ 
-      sucesso: false, 
-      mensagem: 'Erro interno do servidor.' 
+    console.error('Erro ao processar pagamento:', error);
+    return res.status(500).json({
+      sucesso: false,
+      mensagem: 'Erro interno do servidor.',
+      detalhes: error.message
     });
   }
 });
+
+
 
 // LISTAR PAGAMENTOS DO USUÁRIO (COM ANÚNCIOS)
 router.get("/meus", verificarToken, async (req, res) => {
