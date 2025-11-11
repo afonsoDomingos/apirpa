@@ -7,22 +7,32 @@ const criarAnuncio = async (req, res) => {
   const { name, image, description, price, whatsappLink } = req.body;
   const userId = req.usuario.id;
 
+  if (!name) {
+    return res.status(400).json({ sucesso: false, mensagem: 'Nome é obrigatório.' });
+  }
+
   try {
     const anuncio = new Anuncio({
-      name: name || 'Anúncio Sem Título',
+      name: name.trim(),
       image: image || null,
-      description: description || 'Anúncio no RecuperaAqui',
-      price: price || 500,
+      description: description || 'Anúncio no RecuperaAqui – Qualidade garantida!',
+      price: price ? Number(price) : 500,
       whatsappLink: whatsappLink || 'https://wa.me/258840000000',
       userId,
-      status: 'draft'
+      status: 'draft',
+      weeks: 0,
+      amount: 0
     });
 
     await anuncio.save();
     res.status(201).json({ sucesso: true, anuncio });
   } catch (error) {
     console.error('Erro ao criar anúncio:', error);
-    res.status(500).json({ sucesso: false, mensagem: 'Erro interno.' });
+    // Mensagem amigável pro frontend
+    res.status(500).json({ 
+      sucesso: false, 
+      mensagem: 'Erro ao salvar anúncio. Tente novamente ou contacte o suporte.' 
+    });
   }
 };
 
