@@ -3,19 +3,17 @@ const Anuncio = require('../models/Anuncio');
 const Pagamento = require('../models/pagamentoModel');
 const Gateway = require('../services/gateway');
 
-// CRIAR ANÚNCIO (DRAFT)
 const criarAnuncio = async (req, res) => {
-  const { name, image } = req.body;
+  const { name, image, description, price, whatsappLink } = req.body;
   const userId = req.usuario.id;
-
-  if (!name) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Nome é obrigatório.' });
-  }
 
   try {
     const anuncio = new Anuncio({
-      name,
+      name: name || 'Anúncio Sem Título',
       image: image || null,
+      description: description || 'Anúncio no RecuperaAqui',
+      price: price || 500,
+      whatsappLink: whatsappLink || 'https://wa.me/258840000000',
       userId,
       status: 'draft'
     });
@@ -28,12 +26,11 @@ const criarAnuncio = async (req, res) => {
   }
 };
 
-// LISTAR MEUS ANÚNCIOS
 const meusAnuncios = async (req, res) => {
   try {
     const hoje = new Date();
     const anuncios = await Anuncio.find({ userId: req.usuario.id })
-      .select('name image status weeks startDate endDate amount')
+      .select('name image description price whatsappLink status weeks startDate endDate amount')
       .sort({ createdAt: -1 });
 
     const comStatus = anuncios.map(a => {
@@ -52,83 +49,51 @@ const meusAnuncios = async (req, res) => {
   }
 };
 
-// LISTAR ANÚNCIOS ATIVOS (PÚBLICO)
 const anunciosAtivos = async (req, res) => {
   try {
     const hoje = new Date();
     const anuncios = await Anuncio.find({
       status: 'active',
       endDate: { $gte: hoje }
-    }).select('name image').limit(20);
+    })
+    .select('name image description price whatsappLink weeks endDate')
+    .limit(20)
+    .sort({ createdAt: -1 });
 
-    res.json({ sucesso: true, anuncios });
+    const formatados = anuncios.map(a => ({
+      _id: a._id,
+      name: a.name,
+      image: a.image || '/img/default-ad.jpg',
+      description: a.description,
+      price: a.price,
+      whatsappLink: a.whatsappLink,
+      weeks: a.weeks,
+      diasRestantes: Math.ceil((a.endDate - hoje) / 86400000)
+    }));
+
+    res.json({ sucesso: true, anuncios: formatados });
   } catch (error) {
+    console.error('Erro ao carregar anúncios:', error);
     res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar anúncios.' });
   }
 };
 
-// ATUALIZAR ANÚNCIO
-const atualizarAnuncio = async (req, res) => {
-  const { id } = req.params;
-  const { name, image } = req.body;
-
-  try {
-    const anuncio = await Anuncio.findOne({ _id: id, userId: req.usuario.id });
-    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado.' });
-
-    if (anuncio.status !== 'draft') {
-      return res.status(400).json({ sucesso: false, mensagem: 'Só pode editar em draft.' });
-    }
-
-    anuncio.name = name || anuncio.name;
-    anuncio.image = image || anuncio.image;
-    await anuncio.save();
-
-    res.json({ sucesso: true, anuncio });
-  } catch (error) {
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar.' });
-  }
-};
-
-// REMOVER ANÚNCIO
-const removerAnuncio = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const anuncio = await Anuncio.findOneAndDelete({ _id: id, userId: req.usuario.id });
-    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado.' });
-
-    res.json({ sucesso: true, mensagem: 'Anúncio removido.' });
-  } catch (error) {
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao remover.' });
-  }
-};
-
-// PROCESSAR PAGAMENTO (agora chamado via rota específica)
 const processarPagamento = async (req, res) => {
-  const { method, phone, amount, weeks } = req.body;
-  const anuncioId = req.params.id;  // Pega do params agora
+  const { method, phone, amount, weeks, description, price, whatsappLink } = req.body;
+  const anuncioId = req.params.id;
   const usuarioId = req.usuario.id;
 
   if (!method || !amount || !weeks || weeks < 1 || weeks > 4) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Dados inválidos (método, valor, semanas entre 1-4).' });
-  }
-
-  // Validação extra para phone se método requer
-  if ((method === 'mpesa' || method === 'emola') && !phone) {
-    return res.status(400).json({ sucesso: false, mensagem: `Telefone obrigatório para ${method}.` });
+    return res.status(400).json({ sucesso: false, mensagem: 'Dados inválidos.' });
   }
 
   try {
     const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
     if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
-
-    if (anuncio.status !== 'draft') {
-      return res.status(400).json({ sucesso: false, mensagem: 'Anúncio já pago ou expirado.' });
-    }
+    if (anuncio.status !== 'draft') return res.status(400).json({ sucesso: false, mensagem: 'Anúncio já pago.' });
 
     const precoEsperado = weeks * 500;
-    if (Number(amount) !== precoEsperado) {
+    if (Number(amount) !== precoEsperado && method !== 'gratuito') {
       return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${precoEsperado} MZN.` });
     }
 
@@ -136,50 +101,38 @@ const processarPagamento = async (req, res) => {
     const fim = new Date(hoje);
     fim.setDate(hoje.getDate() + weeks * 7);
 
-    // ATIVAR ANÚNCIO
+    // ATUALIZAR ANÚNCIO
     anuncio.status = 'active';
     anuncio.weeks = weeks;
     anuncio.startDate = hoje;
     anuncio.endDate = fim;
     anuncio.amount = amount;
+    anuncio.description = description || anuncio.description;
+    anuncio.price = price || amount;
+    anuncio.whatsappLink = whatsappLink || anuncio.whatsappLink;
     await anuncio.save();
 
     // GRATUITO
-    if (amount == 0 && method === 'gratuito') {
+    if (method === 'gratuito') {
       const pagamento = new Pagamento({
-        pacote: 'free',
-        metodoPagamento: 'gratuito',
-        valor: 0,
-        status: 'aprovado',
-        usuarioId,
-        tipoPagamento: 'anuncio',  // Diferencia como anúncio
-        dataPagamento: hoje,
-        gatewayResponse: { message: 'Gratuito ativado' },
-        anuncioId: anuncio._id
+        usuarioId, pacote: 'free_anuncio', metodoPagamento: 'gratuito', valor: 0,
+        status: 'aprovado', tipoPagamento: 'anuncio', anuncioId: anuncio._id
       });
       await pagamento.save();
       return res.json({ sucesso: true, mensagem: 'Anúncio gratuito ativado!', anuncio });
     }
 
-    // PAGAMENTO PAGO
+    // PAGAMENTO REAL
     const pay = await Gateway.payment(method, phone, amount, 'anuncio');
     if (!pay || pay.status !== 'success') {
       return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
     }
 
     const pagamento = new Pagamento({
-      pacote: `anuncio_${weeks}s`,
-      metodoPagamento: method,
-      valor: amount,
-      telefone: phone,
-      status: 'aprovado',
-      usuarioId,
-      tipoPagamento: 'anuncio',  // Diferencia como anúncio
-      dataPagamento: hoje,
-      gatewayResponse: pay.data,
-      anuncioId: anuncio._id
+      usuarioId, pacote: `anuncio_${weeks}s`, metodoPagamento: method, valor: amount,
+      telefone: phone, status: 'aprovado', tipoPagamento: 'anuncio',
+      anuncioId: anuncio._id, gatewayResponse: pay.data
     });
-
     await pagamento.save();
 
     res.json({ sucesso: true, mensagem: 'Anúncio ativado!', anuncio, pagamento });
@@ -189,11 +142,4 @@ const processarPagamento = async (req, res) => {
   }
 };
 
-module.exports = {
-  criarAnuncio,
-  meusAnuncios,
-  anunciosAtivos,
-  atualizarAnuncio,
-  removerAnuncio,
-  processarPagamento
-};
+module.exports = { criarAnuncio, meusAnuncios, anunciosAtivos, processarPagamento };
