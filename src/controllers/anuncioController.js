@@ -119,7 +119,7 @@ const processarPagamento = async (req, res) => {
     anuncio.amount = amount;
     anuncio.description = description || anuncio.description;
     anuncio.price = price || amount;
-    anuncio.ctaLink = whatsappLink || anuncio.ctaLink;
+    anuncio.ctaLink = ctaLink || anuncio.ctaLink;
     await anuncio.save();
 
     // GRATUITO
