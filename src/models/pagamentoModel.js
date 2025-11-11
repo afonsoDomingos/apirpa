@@ -24,6 +24,9 @@ const pagamentoSchema = new mongoose.Schema({
   }
 });
 
+// ÍNDICE PARA QUERIES RÁPIDAS POR TIPO
+pagamentoSchema.index({ tipoPagamento: 1, usuarioId: 1 });
+
 // === LOGS ANTES DE SALVAR ===
 pagamentoSchema.pre('save', function (next) {
   console.log(`[PagamentoModel] Criando novo pagamento para usuário ${this.usuarioId}`);

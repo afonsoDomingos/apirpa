@@ -1,181 +1,191 @@
+// controllers/anuncioController.js
 const Anuncio = require('../models/Anuncio');
-const mongoose = require('mongoose'); // Adicionado para verificar conexão
-const multer = require('multer');
-const { storageAnuncios } = require('../config/cloudinary');
+const Pagamento = require('../models/pagamentoModel');
+const Gateway = require('../services/gateway');
 
-const upload = multer({
-  storage: storageAnuncios,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Tipo de arquivo inválido. Use JPEG, PNG ou WEBP.'));
-    }
-    cb(null, true);
-  }
-}).single('image');
+// CRIAR ANÚNCIO (DRAFT)
+const criarAnuncio = async (req, res) => {
+  const { name, image } = req.body;
+  const userId = req.usuario.id;
 
-const criarAnuncio = (req, res) => {
-  console.log('POST /api/anuncios - Criando anúncio');
-  console.log('Usuário:', req.usuario?.id);
-
-  // Verificar conexão com MongoDB
-  if (mongoose.connection.readyState !== 1) {
-    console.error('MongoDB não está conectado');
-    return res.status(500).json({ sucesso: false, mensagem: 'Erro de conexão com o banco de dados' });
+  if (!name) {
+    return res.status(400).json({ sucesso: false, mensagem: 'Nome é obrigatório.' });
   }
 
-  // Validar req.usuario
-  if (!req.usuario?.id) {
-    console.log('Erro: Usuário não autenticado');
-    return res.status(401).json({ sucesso: false, mensagem: 'Usuário não autenticado' });
+  try {
+    const anuncio = new Anuncio({
+      name,
+      image: image || null,
+      userId,
+      status: 'draft'
+    });
+
+    await anuncio.save();
+    res.status(201).json({ sucesso: true, anuncio });
+  } catch (error) {
+    console.error('Erro ao criar anúncio:', error);
+    res.status(500).json({ sucesso: false, mensagem: 'Erro interno.' });
   }
-
-  upload(req, res, async (err) => {
-    if (err) {
-      console.log('Erro no upload:', err.message);
-      return res.status(400).json({ sucesso: false, mensagem: err.message });
-    }
-
-    try {
-      const { name, description, price, ctaLink, weeks = 1, imageUrl } = req.body;
-      console.log('Payload recebido:', {
-        name,
-        description,
-        price,
-        ctaLink,
-        weeks,
-        imageUrl,
-        file: req.file ? { path: req.file.path, mimetype: req.file.mimetype, size: req.file.size } : null
-      });
-
-      // Validação dos campos
-      if (!name || name.trim().length < 3) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Nome do anúncio é obrigatório e deve ter pelo menos 3 caracteres' });
-      }
-      if (!price || isNaN(price) || Number(price) <= 0) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Preço é obrigatório e deve ser um número positivo' });
-      }
-      if (!ctaLink || !/^https?:\/\//.test(ctaLink)) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Link de contato inválido' });
-      }
-      if (!weeks || isNaN(weeks) || Number(weeks) < 1) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Semanas devem ser um número positivo' });
-      }
-      if (!req.file && !imageUrl) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Imagem ou URL da imagem é obrigatória' });
-      }
-
-      const image = req.file ? req.file.path : imageUrl;
-      const amount = Number(weeks) * 500;
-
-      const anuncio = new Anuncio({
-        name: name.trim(),
-        description: description || '',
-        price: Number(price),
-        ctaLink: ctaLink.trim(),
-        image,
-        weeks: Number(weeks),
-        amount,
-        userId: req.usuario.id,
-        status: 'pending'
-      });
-
-      console.log('Anúncio a ser salvo:', anuncio.toObject());
-
-      await anuncio.save();
-      console.log('Anúncio criado:', anuncio._id);
-      res.status(201).json({ sucesso: true, anuncioId: anuncio._id, anuncio: anuncio.toObject() });
-    } catch (error) {
-      console.error('Erro ao salvar anúncio:', error);
-      res.status(500).json({ sucesso: false, mensagem: `Erro ao criar anúncio: ${error.message}` });
-    }
-  });
 };
 
-// Demais funções (meusAnuncios, anunciosAtivos, atualizarAnuncio, removerAnuncio) mantidas
+// LISTAR MEUS ANÚNCIOS
 const meusAnuncios = async (req, res) => {
-  console.log(`GET /api/anuncios/meus - Usuário: ${req.usuario.id}`);
   try {
-    const anuncios = await Anuncio.find({ userId: req.usuario.id }).sort({ createdAt: -1 });
-    console.log(`Encontrados ${anuncios.length} anúncios`);
-    res.json(anuncios);
+    const hoje = new Date();
+    const anuncios = await Anuncio.find({ userId: req.usuario.id })
+      .select('name image status weeks startDate endDate amount')
+      .sort({ createdAt: -1 });
+
+    const comStatus = anuncios.map(a => {
+      const expirado = a.endDate && a.endDate < hoje;
+      return {
+        ...a._doc,
+        status: expirado ? 'expired' : a.status,
+        diasRestantes: a.endDate ? Math.ceil((a.endDate - hoje) / 86400000) : null,
+        expirado
+      };
+    });
+
+    res.json({ sucesso: true, anuncios: comStatus });
   } catch (error) {
-    console.error('Erro ao buscar:', error);
-    res.status(500).json({ sucesso: false, mensagem: `Erro ao carregar: ${error.message}` });
+    res.status(500).json({ sucesso: false, mensagem: 'Erro ao listar.' });
   }
 };
 
+// LISTAR ANÚNCIOS ATIVOS (PÚBLICO)
 const anunciosAtivos = async (req, res) => {
-  console.log('GET /api/anuncios/ativos - Buscando ativos');
   try {
-    const anuncios = await Anuncio.find({ status: 'active' }).select('-userId');
-    console.log(`Encontrados ${anuncios.length} anúncios ativos`);
-    res.json(anuncios);
+    const hoje = new Date();
+    const anuncios = await Anuncio.find({
+      status: 'active',
+      endDate: { $gte: hoje }
+    }).select('name image').limit(20);
+
+    res.json({ sucesso: true, anuncios });
   } catch (error) {
-    console.error('Erro ao carregar ativos:', error);
-    res.status(500).json({ sucesso: false, mensagem: `Erro ao carregar: ${error.message}` });
+    res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar anúncios.' });
   }
 };
 
-const atualizarAnuncio = (req, res) => {
-  console.log(`PUT /api/anuncios/${req.params.id} - Usuário: ${req.usuario.id}`);
-  upload(req, res, async (err) => {
-    if (err) {
-      console.log('Erro no upload:', err.message);
-      return res.status(400).json({ sucesso: false, mensagem: err.message });
+// ATUALIZAR ANÚNCIO
+const atualizarAnuncio = async (req, res) => {
+  const { id } = req.params;
+  const { name, image } = req.body;
+
+  try {
+    const anuncio = await Anuncio.findOne({ _id: id, userId: req.usuario.id });
+    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado.' });
+
+    if (anuncio.status !== 'draft') {
+      return res.status(400).json({ sucesso: false, mensagem: 'Só pode editar em draft.' });
     }
-    try {
-      const { name, description, price, ctaLink, weeks, imageUrl } = req.body;
-      const updateData = {};
-      if (name) updateData.name = name.trim();
-      if (description) updateData.description = description;
-      if (price) updateData.price = Number(price);
-      if (ctaLink) updateData.ctaLink = ctaLink.trim();
-      if (weeks) {
-        updateData.weeks = Number(weeks);
-        updateData.amount = Number(weeks) * 500;
-      }
-      if (req.file) {
-        updateData.image = req.file.path;
-      } else if (imageUrl) {
-        updateData.image = imageUrl;
-      }
-      const anuncio = await Anuncio.findOneAndUpdate(
-        { _id: req.params.id, userId: req.usuario.id },
-        updateData,
-        { new: true, runValidators: true }
-      );
-      if (!anuncio) {
-        console.log('Anúncio não encontrado ou sem permissão');
-        return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
-      }
-      console.log('Anúncio atualizado:', anuncio._id);
-      res.json({ sucesso: true, anuncio });
-    } catch (error) {
-      console.error('Erro ao atualizar:', error);
-      res.status(500).json({ sucesso: false, mensagem: `Erro ao atualizar anúncio: ${error.message}` });
-    }
-  });
+
+    anuncio.name = name || anuncio.name;
+    anuncio.image = image || anuncio.image;
+    await anuncio.save();
+
+    res.json({ sucesso: true, anuncio });
+  } catch (error) {
+    res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar.' });
+  }
 };
 
+// REMOVER ANÚNCIO
 const removerAnuncio = async (req, res) => {
   const { id } = req.params;
-  console.log(`DELETE /api/anuncios/${id} - Usuário: ${req.usuario.id}`);
+
   try {
-    const anuncio = await Anuncio.findOneAndDelete({
-      _id: id,
-      userId: req.usuario.id,
-    });
-    if (!anuncio) {
-      console.log('Anúncio não encontrado');
-      return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
-    }
-    console.log('Anúncio removido:', id);
-    res.json({ sucesso: true, mensagem: 'Removido com sucesso' });
+    const anuncio = await Anuncio.findOneAndDelete({ _id: id, userId: req.usuario.id });
+    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado.' });
+
+    res.json({ sucesso: true, mensagem: 'Anúncio removido.' });
   } catch (error) {
-    console.error('Erro ao remover:', error);
-    res.status(500).json({ sucesso: false, mensagem: `Erro ao remover: ${error.message}` });
+    res.status(500).json({ sucesso: false, mensagem: 'Erro ao remover.' });
+  }
+};
+
+// PROCESSAR PAGAMENTO (agora chamado via rota específica)
+const processarPagamento = async (req, res) => {
+  const { method, phone, amount, weeks } = req.body;
+  const anuncioId = req.params.id;  // Pega do params agora
+  const usuarioId = req.usuario.id;
+
+  if (!method || !amount || !weeks || weeks < 1 || weeks > 4) {
+    return res.status(400).json({ sucesso: false, mensagem: 'Dados inválidos (método, valor, semanas entre 1-4).' });
+  }
+
+  // Validação extra para phone se método requer
+  if ((method === 'mpesa' || method === 'emola') && !phone) {
+    return res.status(400).json({ sucesso: false, mensagem: `Telefone obrigatório para ${method}.` });
+  }
+
+  try {
+    const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
+    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
+
+    if (anuncio.status !== 'draft') {
+      return res.status(400).json({ sucesso: false, mensagem: 'Anúncio já pago ou expirado.' });
+    }
+
+    const precoEsperado = weeks * 500;
+    if (Number(amount) !== precoEsperado) {
+      return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${precoEsperado} MZN.` });
+    }
+
+    const hoje = new Date();
+    const fim = new Date(hoje);
+    fim.setDate(hoje.getDate() + weeks * 7);
+
+    // ATIVAR ANÚNCIO
+    anuncio.status = 'active';
+    anuncio.weeks = weeks;
+    anuncio.startDate = hoje;
+    anuncio.endDate = fim;
+    anuncio.amount = amount;
+    await anuncio.save();
+
+    // GRATUITO
+    if (amount == 0 && method === 'gratuito') {
+      const pagamento = new Pagamento({
+        pacote: 'free',
+        metodoPagamento: 'gratuito',
+        valor: 0,
+        status: 'aprovado',
+        usuarioId,
+        tipoPagamento: 'anuncio',  // Diferencia como anúncio
+        dataPagamento: hoje,
+        gatewayResponse: { message: 'Gratuito ativado' },
+        anuncioId: anuncio._id
+      });
+      await pagamento.save();
+      return res.json({ sucesso: true, mensagem: 'Anúncio gratuito ativado!', anuncio });
+    }
+
+    // PAGAMENTO PAGO
+    const pay = await Gateway.payment(method, phone, amount, 'anuncio');
+    if (!pay || pay.status !== 'success') {
+      return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
+    }
+
+    const pagamento = new Pagamento({
+      pacote: `anuncio_${weeks}s`,
+      metodoPagamento: method,
+      valor: amount,
+      telefone: phone,
+      status: 'aprovado',
+      usuarioId,
+      tipoPagamento: 'anuncio',  // Diferencia como anúncio
+      dataPagamento: hoje,
+      gatewayResponse: pay.data,
+      anuncioId: anuncio._id
+    });
+
+    await pagamento.save();
+
+    res.json({ sucesso: true, mensagem: 'Anúncio ativado!', anuncio, pagamento });
+  } catch (error) {
+    console.error('Erro no pagamento:', error);
+    res.status(500).json({ sucesso: false, mensagem: 'Erro interno.' });
   }
 };
 
@@ -185,4 +195,5 @@ module.exports = {
   anunciosAtivos,
   atualizarAnuncio,
   removerAnuncio,
+  processarPagamento
 };
