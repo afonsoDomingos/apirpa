@@ -26,7 +26,7 @@ router.post('/processar', verificarToken, async (req, res) => {
     }
 
     // 2. Validar valor
-    if (amount !== anuncio.weeks * 500) {
+    if (Number(amount) !== Number(anuncio.weeks) * 500) {
       return res.status(400).json({ sucesso: false, mensagem: 'Valor inconsistente com semanas.' });
     }
 
