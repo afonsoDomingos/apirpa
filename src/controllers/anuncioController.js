@@ -4,7 +4,7 @@ const Pagamento = require('../models/pagamentoModel');
 const Gateway = require('../services/gateway');
 
 const criarAnuncio = async (req, res) => {
-  const { name, image, description, price, whatsappLink } = req.body;
+  const { name, image, description, price, ctaLink } = req.body;
   const userId = req.usuario.id;
 
   if (!name) {
@@ -17,7 +17,7 @@ const criarAnuncio = async (req, res) => {
       image: image || null,
       description: description || 'Anúncio no RecuperaAqui – Qualidade garantida!',
       price: price ? Number(price) : 500,
-      whatsappLink: whatsappLink || 'https://wa.me/258840000000',
+      ctaLink: ctaLink || 'https://wa.me/258840000000',
       userId,
       status: 'draft',
       weeks: 0,
@@ -40,7 +40,7 @@ const meusAnuncios = async (req, res) => {
   try {
     const hoje = new Date();
     const anuncios = await Anuncio.find({ userId: req.usuario.id })
-      .select('name image description price whatsappLink status weeks startDate endDate amount')
+      .select('name image description price ctaLink status weeks startDate endDate amount')
       .sort({ createdAt: -1 });
 
     const comStatus = anuncios.map(a => {
@@ -66,7 +66,7 @@ const anunciosAtivos = async (req, res) => {
       status: 'active',
       endDate: { $gte: hoje }
     })
-    .select('name image description price whatsappLink weeks endDate')
+    .select('name image description price ctaLink weeks endDate')
     .limit(20)
     .sort({ createdAt: -1 });
 
@@ -76,7 +76,7 @@ const anunciosAtivos = async (req, res) => {
       image: a.image || '/img/default-ad.jpg',
       description: a.description,
       price: a.price,
-      whatsappLink: a.whatsappLink,
+      ctaLink: a.ctaLink,
       weeks: a.weeks,
       diasRestantes: Math.ceil((a.endDate - hoje) / 86400000)
     }));
@@ -89,7 +89,7 @@ const anunciosAtivos = async (req, res) => {
 };
 
 const processarPagamento = async (req, res) => {
-  const { method, phone, amount, weeks, description, price, whatsappLink } = req.body;
+  const { method, phone, amount, weeks, description, price, ctaLink } = req.body;
   const anuncioId = req.params.id;
   const usuarioId = req.usuario.id;
 
@@ -119,7 +119,7 @@ const processarPagamento = async (req, res) => {
     anuncio.amount = amount;
     anuncio.description = description || anuncio.description;
     anuncio.price = price || amount;
-    anuncio.whatsappLink = whatsappLink || anuncio.whatsappLink;
+    anuncio.ctaLink = whatsappLink || anuncio.ctaLink;
     await anuncio.save();
 
     // GRATUITO
