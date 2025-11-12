@@ -5,6 +5,7 @@ const verificarToken = require('../middleware/authMiddleware');
 const Pagamento = require('../models/pagamentoModel');
 const Anuncio = require('../models/Anuncio');
 const Gateway = require('../services/gateway');
+const mongoose = require('mongoose');
 
 // === PREÇOS FIXOS (em MZN) ===
 const PRECO_POR_SEMANA = 500;
@@ -12,24 +13,27 @@ const PRECO_MENSAL = 150;
 const PRECO_ANUAL = 1500;
 
 // ==============================================================
-// 1. PROCESSAR PAGAMENTO (ANTIGO + ANÚNCIOS + GRATUITO)
+// 1. PROCESSAR PAGAMENTO (CORRIGIDO)
 // ==============================================================
-// === ROTA MELHORADA: PROCESSAR PAGAMENTO COM ERROS CLAROS ===
 router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, dadosCartao, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
+  // === VALIDAÇÃO BÁSICA ===
   if (!method || amount === undefined || !phone) {
     return res.status(400).json({ sucesso: false, mensagem: 'Método, telefone e valor são obrigatórios.' });
   }
 
   amount = Number(amount);
-  if (isNaN(amount) || amount < 0) return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido.' });
+  if (isNaN(amount) || amount < 0) {
+    return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido.' });
+  }
 
   try {
-    let pay;
-    const referenciaUnica = `RpaLive${Date.now()}`;
+    // === GERAR REFERÊNCIA ÚNICA UMA VEZ ===
+    const referenciaUnica = `RpaLive${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
 
+    let pay;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
         pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
@@ -37,7 +41,7 @@ router.post('/processar', verificarToken, async (req, res) => {
 
         if (tentativa < 3) await new Promise(r => setTimeout(r, 2000));
       } catch (err) {
-        console.error(`[Gateway] Erro na tentativa ${tentativa}:`, err.message);
+        console.error(`[Gateway] Tentativa ${tentativa} falhou:`, err.message);
         if (tentativa === 3) throw err;
         await new Promise(r => setTimeout(r, 2000));
       }
@@ -47,43 +51,58 @@ router.post('/processar', verificarToken, async (req, res) => {
       let mensagemAmigavel = 'Pagamento falhou. Tente novamente.';
       const msg = typeof pay?.message === 'string' ? pay.message.toLowerCase() : '';
 
-      if (msg.includes('saldo') || msg.includes('insuficiente')) mensagemAmigavel = 'Saldo insuficiente na carteira M-Pesa/Emola.';
+      if (msg.includes('saldo') || msg.includes('insuficiente')) mensagemAmigavel = 'Saldo insuficiente na carteira.';
       else if (msg.includes('timeout') || msg.includes('tempo')) mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
       else if (msg.includes('número') || msg.includes('inválido')) mensagemAmigavel = 'Número de telefone inválido.';
-      else if (msg.includes('cancelado') || msg.includes('recusado')) mensagemAmigavel = 'Pagamento cancelado pelo usuário.';
-      else if (pay?.output_ResponseCode === 'INS-10') mensagemAmigavel = 'Transação duplicada. Gere uma nova referência.';
+      else if (msg.includes('cancelado') || msg.includes('recusado')) mensagemAmigavel = 'Pagamento cancelado.';
+      else if (pay?.output_ResponseCode === 'INS-10') mensagemAmigavel = 'Transação duplicada. Tente novamente.';
 
       return res.status(400).json({
         sucesso: false,
         mensagem: mensagemAmigavel,
         detalhes: pay || { erro: 'Gateway não respondeu' },
-        dica: 'Verifique o saldo, número e conexão.'
+        dica: 'Verifique saldo, número e conexão.'
       });
     }
 
-    // === PAGAMENTO CONFIRMADO ===
+    // === PAGAMENTO APROVADO ===
     if (anuncioId) {
+      // === VALIDAÇÃO DO ANÚNCIO ===
+      if (!mongoose.Types.ObjectId.isValid(anuncioId)) {
+        return res.status(400).json({ sucesso: false, mensagem: 'ID do anúncio inválido.' });
+      }
+
       const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
       if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
 
       const weeks = Number(anuncio.weeks) || 1;
       const valorEsperado = weeks * PRECO_POR_SEMANA;
 
-      if (amount !== valorEsperado && amount !== 0) {
-        return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).` });
-      }
-
+      // === ANÚNCIO GRATUITO (10 MIN) ===
       if (amount === 0 && method === 'gratuito') {
-        const jaUsou = await Pagamento.countDocuments({ anuncioId: anuncio._id, pacote: 'free' });
-        if (jaUsou > 0) return res.status(400).json({ sucesso: false, mensagem: 'Já usaste o período grátis.' });
+        const jaUsou = await Pagamento.findOne({
+          anuncioId: anuncio._id,
+          pacote: 'free',
+          metodoPagamento: 'gratuito'
+        });
+
+        if (jaUsou) {
+          return res.status(400).json({ sucesso: false, mensagem: 'Já usaste o período grátis neste anúncio.' });
+        }
 
         anuncio.status = 'active';
         await anuncio.save();
 
         const pagamento = new Pagamento({
-          usuarioId, pacote: 'free', metodoPagamento: 'gratuito', valor: 0,
-          telefone: null, status: 'aprovado', tipoPagamento: 'anuncio',
-          dataPagamento: new Date(), gatewayResponse: { message: 'Grátis 10 min' },
+          usuarioId,
+          pacote: 'free',
+          metodoPagamento: 'gratuito',
+          valor: 0,
+          telefone: null,
+          status: 'aprovado',
+          tipoPagamento: 'anuncio',
+          dataPagamento: new Date(),
+          gatewayResponse: { message: 'Grátis 10 min' },
           anuncioId: anuncio._id
         });
 
@@ -96,15 +115,29 @@ router.post('/processar', verificarToken, async (req, res) => {
         });
       }
 
-      // Pago
+      // === ANÚNCIO PAGO ===
+      if (amount !== valorEsperado) {
+        return res.status(400).json({
+          sucesso: false,
+          mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).`
+        });
+      }
+
       anuncio.status = 'active';
       anuncio.amount = amount;
       await anuncio.save();
 
       const pagamento = new Pagamento({
-        usuarioId, pacote: 'anuncio', metodoPagamento: method, valor: amount,
-        telefone: phone, status: 'aprovado', tipoPagamento: 'anuncio',
-        dataPagamento: new Date(), gatewayResponse: pay.data, anuncioId: anuncio._id
+        usuarioId,
+        pacote: 'anuncio',
+        metodoPagamento: method,
+        valor: amount,
+        telefone: phone,
+        status: 'aprovado',
+        tipoPagamento: 'anuncio',
+        dataPagamento: new Date(),
+        gatewayResponse: pay.data,
+        anuncioId: anuncio._id
       });
 
       await pagamento.save();
@@ -116,26 +149,29 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
 
     } else {
-      // Assinatura
-      if (!pacote || !['mensal', 'anual', 'free'].includes(pacote.toLowerCase())) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Pacote inválido.' });
+      // === ASSINATURA (SÓ MENSAL/ANUAL) ===
+      if (!pacote || !['mensal', 'anual'].includes(pacote.toLowerCase())) {
+        return res.status(400).json({ sucesso: false, mensagem: 'Pacote inválido. Use mensal ou anual.' });
       }
 
       const valores = { mensal: PRECO_MENSAL, anual: PRECO_ANUAL };
-      if (amount !== 0 && amount !== valores[pacote.toLowerCase()]) {
-        return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${valores[pacote.toLowerCase()]} MZN.` });
+      if (amount !== valores[pacote.toLowerCase()]) {
+        return res.status(400).json({
+          sucesso: false,
+          mensagem: `Valor deve ser ${valores[pacote.toLowerCase()]} MZN para o plano ${pacote}.`
+        });
       }
 
       const pagamento = new Pagamento({
         usuarioId,
         pacote: pacote.toLowerCase(),
-        metodoPagamento: amount === 0 ? 'gratuito' : method,
+        metodoPagamento: method,
         valor: amount,
-        telefone: amount === 0 ? null : phone,
+        telefone: phone,
         status: 'aprovado',
         tipoPagamento: 'assinatura',
         dataPagamento: new Date(),
-        gatewayResponse: amount === 0 ? { message: 'Plano gratuito' } : pay.data,
+        gatewayResponse: pay.data,
         anuncioId: null
       });
 
@@ -143,8 +179,8 @@ router.post('/processar', verificarToken, async (req, res) => {
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: amount === 0 ? 'Plano gratuito ativado!' : `Plano ${pacote} ativado com sucesso!`,
-        validadeDias: pacote === 'anual' ? 365 : 30
+        mensagem: `Plano ${pacote} ativado com sucesso!`,
+        validadeDias: pacote.toLowerCase() === 'anual' ? 365 : 30
       });
     }
 
@@ -158,15 +194,18 @@ router.post('/processar', verificarToken, async (req, res) => {
   }
 });
 
-
 // ==============================================================
-// 2. LISTAR PAGAMENTOS DO USUÁRIO LOGADO
+// 2. LISTAR PAGAMENTOS DO USUÁRIO
 // ==============================================================
 router.get("/meus", verificarToken, async (req, res) => {
   try {
     const pagamentos = await Pagamento.find({ usuarioId: req.usuario.id })
       .sort({ dataPagamento: -1 })
-      .populate('anuncioId', 'name image status weeks userId');
+      .populate({
+        path: 'anuncioId',
+        select: 'name image status weeks userId',
+        match: { _id: { $exists: true } }
+      });
 
     const hoje = new Date();
     const lista = pagamentos.map(pag => {
@@ -174,15 +213,13 @@ router.get("/meus", verificarToken, async (req, res) => {
       let validade = new Date(pag.dataPagamento);
 
       if (p === 'free' && pag.anuncioId) {
-        validade.setMinutes(validade.getMinutes() + 10); // anúncio grátis
-      } else if (p === 'free') {
-        validade.setDate(validade.getDate() + 30); // plano free antigo
+        validade.setMinutes(validade.getMinutes() + 10);
       } else if (p === 'anual') {
         validade.setDate(validade.getDate() + 365);
       } else if (p === 'mensal') {
         validade.setDate(validade.getDate() + 30);
-      } else if (p === 'anuncio') {
-        const weeks = Number(pag.anuncioId?.weeks) || 1;
+      } else if (p === 'anuncio' && pag.anuncioId) {
+        const weeks = Number(pag.anuncioId.weeks) || 1;
         validade.setDate(validade.getDate() + weeks * 7);
       }
 
@@ -214,7 +251,7 @@ router.get("/meus", verificarToken, async (req, res) => {
 });
 
 // ==============================================================
-// 3. ADMIN: LISTAR TODOS OS PAGAMENTOS
+// 3. ADMIN: LISTAR TODOS
 // ==============================================================
 router.get("/", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") {
@@ -224,7 +261,11 @@ router.get("/", verificarToken, async (req, res) => {
   try {
     const pagamentos = await Pagamento.find()
       .populate("usuarioId", "nome email")
-      .populate('anuncioId', 'name image status weeks')
+      .populate({
+        path: 'anuncioId',
+        select: 'name image status weeks',
+        match: { _id: { $exists: true } }
+      })
       .sort({ dataPagamento: -1 });
 
     const hoje = new Date();
@@ -233,11 +274,10 @@ router.get("/", verificarToken, async (req, res) => {
       let validade = new Date(pag.dataPagamento);
 
       if (p === 'free' && pag.anuncioId) validade.setMinutes(validade.getMinutes() + 10);
-      else if (p === 'free') validade.setDate(validade.getDate() + 30);
       else if (p === 'anual') validade.setDate(validade.getDate() + 365);
       else if (p === 'mensal') validade.setDate(validade.getDate() + 30);
-      else if (p === 'anuncio') {
-        const weeks = Number(pag.anuncioId?.weeks) || 1;
+      else if (p === 'anuncio' && pag.anuncioId) {
+        const weeks = Number(pag.anuncioId.weeks) || 1;
         validade.setDate(validade.getDate() + weeks * 7);
       }
 
@@ -270,9 +310,13 @@ router.get("/", verificarToken, async (req, res) => {
 });
 
 // ==============================================================
-// 4. BUSCAR PAGAMENTO POR ID (dono ou admin)
+// 4. BUSCAR POR ID
 // ==============================================================
 router.get("/:id", verificarToken, async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ sucesso: false, mensagem: "ID inválido." });
+  }
+
   try {
     const pagamento = await Pagamento.findById(req.params.id)
       .populate('anuncioId', 'name image status weeks')
@@ -292,24 +336,26 @@ router.get("/:id", verificarToken, async (req, res) => {
 });
 
 // ==============================================================
-// 5. EXCLUIR PAGAMENTO (ADMIN)
+// 5. EXCLUIR (ADMIN)
 // ==============================================================
 router.delete("/:id", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") {
     return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
   }
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ sucesso: false, mensagem: "ID inválido." });
+  }
+
   try {
     const pagamento = await Pagamento.findById(req.params.id);
     if (!pagamento) return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
 
-    // Se for anúncio, pausar
     if (pagamento.anuncioId) {
       await Anuncio.findByIdAndUpdate(pagamento.anuncioId, { status: 'paused' });
     }
 
     await Pagamento.findByIdAndDelete(req.params.id);
-
     res.json({ sucesso: true, mensagem: "Pagamento removido com sucesso." });
   } catch (error) {
     console.error("Erro ao remover pagamento:", error);
@@ -318,7 +364,7 @@ router.delete("/:id", verificarToken, async (req, res) => {
 });
 
 // ==============================================================
-// 6. VERIFICAR ASSINATURA ATIVA (APENAS mensal/anual)
+// 6. VERIFICAR ASSINATURA ATIVA
 // ==============================================================
 router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   try {
@@ -354,12 +400,31 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
 });
 
 // ==============================================================
-// 7. WEBHOOK (M-Pesa, Emola, etc)
+// 7. WEBHOOK (MELHORADO)
 // ==============================================================
-router.post('/webhook', (req, res) => {
-  console.log('[WEBHOOK PAGAMENTO] Dados recebidos:', req.body);
-  // Aqui podes processar confirmações reais e atualizar status
-  res.json({ sucesso: true, recebido: true });
+router.post('/webhook', async (req, res) => {
+  console.log('[WEBHOOK] Dados recebidos:', req.body);
+  const { reference, status, transactionId } = req.body;
+
+  try {
+    const pagamento = await Pagamento.findOne({ 'gatewayResponse.reference': reference });
+    if (!pagamento) {
+      return res.json({ recebido: true, status: 'ignorado' });
+    }
+
+    pagamento.status = status === 'success' ? 'aprovado' : 'rejeitado';
+    pagamento.gatewayResponse = { ...pagamento.gatewayResponse, ...req.body };
+    await pagamento.save();
+
+    if (pagamento.anuncioId && status === 'success') {
+      await Anuncio.findByIdAndUpdate(pagamento.anuncioId, { status: 'active' });
+    }
+
+    res.json({ sucesso: true, atualizado: true });
+  } catch (err) {
+    console.error('Erro no webhook:', err);
+    res.status(500).json({ erro: 'falha interna' });
+  }
 });
 
 module.exports = router;
