@@ -5,8 +5,7 @@ const anuncioSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Usuario',
-    required: true,
-    index: true
+    required: true
   },
   name: {
     type: String,
@@ -48,13 +47,12 @@ const anuncioSchema = new mongoose.Schema({
   },
   amount: {
     type: Number,
-    default: 0 // valor pago (para histórico)
+    default: 0
   },
   status: {
     type: String,
     enum: ['pending', 'active', 'paused', 'expired', 'rejected'],
-    default: 'pending',
-    index: true
+    default: 'pending'
   },
   views: {
     type: Number,
@@ -72,19 +70,11 @@ const anuncioSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// === AUTO-EXPIRAR AO BUSCAR ===
-anuncioSchema.pre('findOne', function () {
-  this.where({ status: { $in: ['active', 'paused'] } });
-});
-
-anuncioSchema.pre('find', function () {
-  this.where({ status: { $in: ['active', 'paused'] } });
-});
-
-// === ÍNDICES ===
+// === ÍNDICES (SÓ AQUI, NUNCA NO CAMPO) ===
 anuncioSchema.index({ userId: 1, status: 1 });
 anuncioSchema.index({ status: 1, dataExpiracao: 1 });
 anuncioSchema.index({ category: 1 });
 anuncioSchema.index({ featured: 1 });
+anuncioSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Anuncio', anuncioSchema);
