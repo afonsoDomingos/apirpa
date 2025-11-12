@@ -22,12 +22,8 @@ const DIAS_ANUAL = 365;
 const calcularValidade = (pag, hoje = new Date()) => {
   const p = (pag.pacote || '').toLowerCase().trim();
   let validade = new Date(pag.dataPagamento);
-  let isMinutes = false;
 
-  if (p === 'free' && pag.anuncioId) {
-    validade.setMinutes(validade.getMinutes() + 10);
-    isMinutes = true;
-  } else if (p === 'teste') {
+  if (p === 'teste') {
     validade.setDate(validade.getDate() + DIAS_TESTE);
   } else if (p === 'mensal') {
     validade.setDate(validade.getDate() + DIAS_MENSAL);
@@ -39,90 +35,49 @@ const calcularValidade = (pag, hoje = new Date()) => {
   }
 
   const diffMs = validade - hoje;
-  let diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  if (isMinutes && diffMs > 0 && diasRestantes === 0) {
-    diasRestantes = 1;
-  }
+  const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   const expirado = diffMs < 0;
-  diasRestantes = expirado ? 0 : diasRestantes;
 
-  return { validade, diasRestantes, expirado };
+  return { 
+    validade, 
+    diasRestantes: expirado ? 0 : diasRestantes, 
+    expirado 
+  };
 };
 
 // ==============================================================
-// 1. PROCESSAR PAGAMENTO (Síncrono – Sandbox)
+// 1. PROCESSAR PAGAMENTO
 // ==============================================================
 router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
-  // === VALIDAÇÕES BÁSICAS ===
-  if (!method || amount === undefined) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Método e valor são obrigatórios.' });
-  }
-
-  if (method !== 'gratuito' && !phone) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Telefone é obrigatório para métodos pagos.' });
-  }
-
-  // === VALIDAÇÃO E NORMALIZAÇÃO DE TELEFONE ===
-  if (phone) {
-    const cleaned = phone.replace(/[^0-9]/g, ''); // Remove +, espaços, etc.
-    const isValid = /^(84|85|82|83)\d{7}$/.test(cleaned) || 
-                    /^258(84|85|82|83)\d{7}$/.test(cleaned);
-
-    if (!isValid) {
-      return res.status(400).json({ 
-        sucesso: false, 
-        mensagem: 'Telefone inválido. Use: 841234567, 258841234567 ou +258841234567' 
-      });
-    }
-
-    // Normaliza: remove 258 e salva só 9 dígitos
-    phone = cleaned.replace(/^258/, '');
+  // VALIDAÇÕES
+  if (!method || amount === undefined || !type) {
+    return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos.' });
   }
 
   amount = parseInt(amount, 10);
   if (isNaN(amount) || amount < 0) {
     return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido.' });
   }
-  if (amount === 0 && method !== 'gratuito') {
-    return res.status(400).json({ sucesso: false, mensagem: 'Valor zero só permitido para método gratuito.' });
+
+  // TELEFONE (só para métodos pagos)
+  if (method !== 'teste' && !phone) {
+    return res.status(400).json({ sucesso: false, mensagem: 'Telefone obrigatório.' });
+  }
+
+  if (phone) {
+    const cleaned = phone.replace(/[^0-9]/g, '');
+    const isValid = /^(84|85|86|87)\d{7}$/.test(cleaned) || /^258\d{9}$/.test(cleaned);
+    if (!isValid) {
+      return res.status(400).json({ sucesso: false, mensagem: 'Telefone inválido. Use 84XXXXXXXXX ou 25884XXXXXXXXX' });
+    }
+    phone = cleaned.replace(/^258/, '');
   }
 
   try {
     const referenciaUnica = `RpaLive${Date.now()}${Math.floor(Math.random() * 10000)}`;
-    let pay;
-
-    // 5 tentativas com delay de 5s
-    for (let tentativa = 1; tentativa <= 5; tentativa++) {
-      try {
-        console.time(`[Gateway] Tentativa ${tentativa}`);
-        pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
-        console.timeEnd(`[Gateway] Tentativa ${tentativa}`);
-        if (pay && pay.status === 'success') break;
-        if (tentativa < 5) await new Promise(r => setTimeout(r, 5000)); // 5s delay
-      } catch (err) {
-        console.error(`[Gateway] Tentativa ${tentativa} falhou:`, err.message);
-        if (tentativa === 5) throw err;
-        await new Promise(r => setTimeout(r, 5000));
-      }
-    }
-
-    if (!pay || pay.status !== 'success') {
-      let mensagemAmigavel = 'Pagamento falhou. Tente novamente.';
-      const msg = typeof pay?.message === 'string' ? pay.message.toLowerCase() : '';
-
-      if (msg.includes('saldo') || msg.includes('insuficiente')) mensagemAmigavel = 'Saldo insuficiente na carteira.';
-      else if (msg.includes('timeout') || msg.includes('tempo')) mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
-      else if (msg.includes('cancelado') || msg.includes('recusado')) mensagemAmigavel = 'Pagamento cancelado.';
-
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: mensagemAmigavel,
-        detalhes: pay || { erro: 'Gateway não respondeu' }
-      });
-    }
 
     // === ANÚNCIO ===
     if (anuncioId) {
@@ -134,48 +89,8 @@ router.post('/processar', verificarToken, async (req, res) => {
       if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
 
       const weeks = Number(anuncio.weeks) || 1;
-      if (isNaN(weeks) || weeks < 1) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Número de semanas inválido no anúncio.' });
-      }
       const valorEsperado = weeks * PRECO_POR_SEMANA;
 
-      // === GRATUITO (10 MIN) ===
-      if (amount === 0 && method === 'gratuito') {
-        const jaUsou = await Pagamento.findOne({
-          anuncioId: anuncio._id,
-          pacote: 'free',
-          metodoPagamento: 'gratuito'
-        });
-
-        if (jaUsou) {
-          return res.status(400).json({ sucesso: false, mensagem: 'Já usaste o período grátis neste anúncio.' });
-        }
-
-        anuncio.status = 'active';
-        await anuncio.save();
-
-        const pagamento = new Pagamento({
-          usuarioId,
-          pacote: 'free',
-          metodoPagamento: 'gratuito',
-          valor: 0,
-          telefone: null,
-          status: 'aprovado',
-          tipoPagamento: 'anuncio',
-          dataPagamento: new Date(),
-          gatewayResponse: { message: 'Grátis 10 min (sandbox)', reference: referenciaUnica },
-          anuncioId: anuncio._id
-        });
-        await pagamento.save();
-
-        return res.status(201).json({
-          sucesso: true,
-          mensagem: 'Anúncio ativado GRATUITAMENTE por 10 minutos!',
-          expiraEm: new Date(Date.now() + 10 * 60 * 1000)
-        });
-      }
-
-      // === ANÚNCIO PAGO ===
       if (amount !== valorEsperado) {
         return res.status(400).json({
           sucesso: false,
@@ -183,8 +98,27 @@ router.post('/processar', verificarToken, async (req, res) => {
         });
       }
 
+      let pay;
+      if (method !== 'teste') {
+        for (let tentativa = 1; tentativa <= 5; tentativa++) {
+          try {
+            console.time(`[Gateway] Tentativa ${tentativa}`);
+            pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
+            console.timeEnd(`[Gateway] Tentativa ${tentativa}`);
+            if (pay && pay.status === 'success') break;
+            if (tentativa < 5) await new Promise(r => setTimeout(r, 5000));
+          } catch (err) {
+            console.error(`[Gateway] Tentativa ${tentativa} falhou:`, err.message);
+            if (tentativa === 5) throw err;
+            await new Promise(r => setTimeout(r, 5000));
+          }
+        }
+        if (!pay || pay.status !== 'success') {
+          return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou. Tente novamente.' });
+        }
+      }
+
       anuncio.status = 'active';
-      anuncio.amount = amount;
       await anuncio.save();
 
       const pagamento = new Pagamento({
@@ -196,64 +130,104 @@ router.post('/processar', verificarToken, async (req, res) => {
         status: 'aprovado',
         tipoPagamento: 'anuncio',
         dataPagamento: new Date(),
-        gatewayResponse: { ...pay.data, reference: referenciaUnica },
+        gatewayResponse: pay ? { ...pay.data, reference: referenciaUnica } : { message: 'Ativado (teste)' },
         anuncioId: anuncio._id
       });
       await pagamento.save();
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: 'Anúncio pago com sucesso!',
+        mensagem: 'Anúncio ativado com sucesso!',
         validadeDias: weeks * 7
       });
+    }
 
-    } else {
-      // === ASSINATURA ===
-      if (!pacote || !['teste', 'mensal', 'anual'].includes(pacote.toLowerCase())) {
-        return res.status(400).json({ 
-          sucesso: false, 
-          mensagem: 'Pacote inválido. Use: teste, mensal ou anual.' 
-        });
-      }
+    // === ASSINATURA ===
+    if (!pacote || !['teste', 'mensal', 'anual'].includes(pacote.toLowerCase())) {
+      return res.status(400).json({ sucesso: false, mensagem: 'Pacote inválido. Use: teste, mensal ou anual.' });
+    }
 
-      const pacotes = {
-        teste: { preco: PRECO_TESTE, dias: DIAS_TESTE },
-        mensal: { preco: PRECO_MENSAL, dias: DIAS_MENSAL },
-        anual: { preco: PRECO_ANUAL, dias: DIAS_ANUAL }
-      };
-      const config = pacotes[pacote.toLowerCase()];
+    const pacotes = {
+      teste: { preco: PRECO_TESTE, dias: DIAS_TESTE },
+      mensal: { preco: PRECO_MENSAL, dias: DIAS_MENSAL },
+      anual: { preco: PRECO_ANUAL, dias: DIAS_ANUAL }
+    };
+    const config = pacotes[pacote.toLowerCase()];
 
-      if (amount !== config.preco) {
-        return res.status(400).json({
-          sucesso: false,
-          mensagem: `Valor deve ser ${config.preco} MZN para o pacote ${pacote}.`
-        });
-      }
+    if (amount !== config.preco) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: `Valor deve ser ${config.preco} MZN para o pacote ${pacote}.`
+      });
+    }
 
+    // PLANO TESTE: ativa sem gateway
+    if (pacote.toLowerCase() === 'teste') {
       const pagamento = new Pagamento({
         usuarioId,
-        pacote: pacote.toLowerCase(),
-        metodoPagamento: method,
-        valor: amount,
-        telefone: phone,
+        pacote: 'teste',
+        metodoPagamento: 'teste',
+        valor: 25,
+        telefone: null,
         status: 'aprovado',
         tipoPagamento: 'assinatura',
         dataPagamento: new Date(),
-        gatewayResponse: { ...pay.data, reference: referenciaUnica },
+        gatewayResponse: { message: 'Plano de teste ativado (5 dias)' },
         anuncioId: null
       });
       await pagamento.save();
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: `Pacote ${pacote} ativado com sucesso!`,
-        validadeDias: config.dias,
-        expiraEm: new Date(Date.now() + config.dias * 24 * 60 * 60 * 1000)
+        mensagem: 'Plano de teste ativado por 5 dias!',
+        validadeDias: 5,
+        expiraEm: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
       });
     }
 
+    // PAGOS: usa gateway
+    let pay;
+    for (let tentativa = 1; tentativa <= 5; tentativa++) {
+      try {
+        console.time(`[Gateway] Tentativa ${tentativa}`);
+        pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
+        console.timeEnd(`[Gateway] Tentativa ${tentativa}`);
+        if (pay && pay.status === 'success') break;
+        if (tentativa < 5) await new Promise(r => setTimeout(r, 5000));
+      } catch (err) {
+        console.error(`[Gateway] Tentativa ${tentativa} falhou:`, err.message);
+        if (tentativa === 5) throw err;
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+
+    if (!pay || pay.status !== 'success') {
+      return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou. Tente novamente.' });
+    }
+
+    const pagamento = new Pagamento({
+      usuarioId,
+      pacote: pacote.toLowerCase(),
+      metodoPagamento: method,
+      valor: amount,
+      telefone: phone,
+      status: 'aprovado',
+      tipoPagamento: 'assinatura',
+      dataPagamento: new Date(),
+      gatewayResponse: { ...pay.data, reference: referenciaUnica },
+      anuncioId: null
+    });
+    await pagamento.save();
+
+    return res.status(201).json({
+      sucesso: true,
+      mensagem: `Pacote ${pacote} ativado com sucesso!`,
+      validadeDias: config.dias,
+      expiraEm: new Date(Date.now() + config.dias * 24 * 60 * 60 * 1000)
+    });
+
   } catch (error) {
-    console.error('ERRO NO PAGAMENTO (SANDBOX):', error);
+    console.error('ERRO NO PAGAMENTO:', error);
     return res.status(500).json({
       sucesso: false,
       mensagem: 'Erro interno. Tente novamente.',

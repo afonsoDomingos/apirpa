@@ -9,46 +9,47 @@ const pagamentoSchema = new mongoose.Schema({
   },
   pacote: {
     type: String,
-    required: true,
-    lowercase: true,
-    trim: true,
-    enum: ['free', 'anuncio', 'teste', 'mensal', 'anual'],
-    default: 'teste'
+    enum: ['teste', 'mensal', 'anual', 'anuncio'],
+    required: true
   },
   metodoPagamento: {
     type: String,
-    required: true,
-    lowercase: true,
-    trim: true,
-    enum: ['gratuito', 'mpesa', 'emola', 'credit_card', 'pix', 'boleto'],
-    default: 'gratuito'
+    enum: ['mpesa', 'emola', 'card', 'teste'],
+    required: true
   },
-  telefone: { type: String, default: null, trim: true },
-  valor: { type: Number, required: true, min: 0 },
-  tipoPagamento: {
+  valor: {
+    type: Number,
+    required: true
+  },
+  telefone: {
     type: String,
-    enum: ['anuncio', 'assinatura'],
-    required: true,
-    lowercase: true,
-    trim: true,
-    default: 'assinatura'
+    default: null
   },
   status: {
     type: String,
-    enum: ['pendente', 'aprovado', 'rejeitado', 'reembolsado'],
-    default: 'pendente',
-    lowercase: true,
-    trim: true
+    enum: ['pendente', 'aprovado', 'falhou', 'cancelado'],
+    default: 'pendente'
   },
-  dataPagamento: { type: Date, default: Date.now },
-  gatewayResponse: { type: mongoose.Schema.Types.Mixed, default: {} },
-  anuncioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Anuncio', default: null }
-}, { timestamps: true });
-
-// Índices úteis
-pagamentoSchema.index({ usuarioId: 1, dataPagamento: -1 });
-pagamentoSchema.index({ anuncioId: 1 });
-pagamentoSchema.index({ pacote: 1, status: 1 });
-pagamentoSchema.index({ dataPagamento: -1 });
+  tipoPagamento: {
+    type: String,
+    enum: ['assinatura', 'anuncio'],
+    required: true
+  },
+  dataPagamento: {
+    type: Date,
+    default: Date.now
+  },
+  gatewayResponse: {
+    type: Object,
+    default: {}
+  },
+  anuncioId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Anuncio',
+    default: null
+  }
+}, {
+  timestamps: true
+});
 
 module.exports = mongoose.model('Pagamento', pagamentoSchema);
