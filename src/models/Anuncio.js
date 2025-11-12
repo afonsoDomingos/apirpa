@@ -25,15 +25,11 @@ const anuncioSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
-  category: {
+
+  ctaLink: {
     type: String,
-    required: true,
-    trim: true
-  },
-  location: {
-    type: String,
-    trim: true
-  },
+    trim: true},
+    
   phone: {
     type: String,
     trim: true
