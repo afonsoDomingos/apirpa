@@ -2,6 +2,11 @@ const axios = require('axios');
 const crypto = require('crypto');
 const config = require('./config');
 
+// === URL DO NGROK (MUDA AQUI TODA VEZ QUE RODAR NGROK) ===
+const WEBHOOK_URL = "https://apirpa.onrender.com/api/pagamentos/webhook";
+//                   ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+//                   COLOCA A TUA URL DO NGROK AQUI!!!
+
 class mpesaC2B {
 
     generateBearerToken(apiKey, publicKeyPem) {
@@ -15,7 +20,7 @@ class mpesaC2B {
                 Buffer.from(apiKey)
             );
             const token = encrypted.toString('base64');
-            console.log('[mpesaC2B] Token Bearer gerado:', token);
+            console.log('[mpesaC2B] Token Bearer gerado');
             return token;
         } catch (error) {
             console.error('[mpesaC2B] Erro ao gerar token:', error.message);
@@ -23,51 +28,43 @@ class mpesaC2B {
         }
     }
 
-
-generateCode() {
-  const timestamp = Date.now().toString().slice(-7);  // últimos 7 dígitos do timestamp
-  const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0'); // 3 dígitos aleatórios
-  const code = `${timestamp}${randomNum}`;  // total 10 caracteres
-  console.log('[mpesaC2B] Código gerado para transação:', code);
-  return code;
-}
-
-
+    // === REFERÊNCIA ÚNICA (NUNCA MAIS INS-10) ===
+    generateCode() {
+      const uniqueRef = `RpaLive_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      console.log('[mpesaC2B] Referência única gerada:', uniqueRef);
+      return uniqueRef;
+    }
 
     async payment(phone, amount) {
         console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}`);
 
-
-         // ✅ Garantir que o número está no formato internacional (25884XXXXXXX)
-    if (!phone.startsWith('258')) {
-        if (/^8\d{8}$/.test(phone)) {
-            phone = '258' + phone;
-            console.log(`[mpesaC2B] Prefixo 258 adicionado: ${phone}`);
-        } else {
-            throw new Error('[mpesaC2B] Número de telefone inválido. Deve começar com 84 ou 85 e ter 9 dígitos.');
+        // Garantir formato 25884...
+        if (!phone.startsWith('258')) {
+            if (/^8[4-7]\d{7}$/.test(phone)) {
+                phone = '258' + phone;
+                console.log(`[mpesaC2B] Prefixo 258 adicionado: ${phone}`);
+            } else {
+                throw new Error('[mpesaC2B] Número inválido. Use 84/85 + 7 dígitos.');
+            }
         }
-    }
 
-        const code = this.generateCode();
-
-        const reference = 'RpaLive';
-        console.log(`[mpesaC2B] Referência gerada: ${reference}`);
+        const code = this.generateCode(); // ← referência única
 
         const payload = {
             input_TransactionReference: code,
             input_CustomerMSISDN: phone,
             input_Amount: amount,
-            input_ThirdPartyReference: reference,
+            input_ThirdPartyReference: code,     // ← mesma ref única
             input_ServiceProviderCode: config.serviceProviderCode,
+            input_CallbackUrl: WEBHOOK_URL       // ← RESOLVE O INS-9!!!
         };
 
-        console.log('[mpesaC2B] Payload para API:', payload);
+        console.log('[mpesaC2B] Payload enviado:', payload);
 
         try {
-            // Gerar token criptografado com chave pública
             const token = this.generateBearerToken(config.apiKey, config.publicKey);
 
-            console.log('[mpesaC2B] Fazendo requisição para API M-Pesa sandbox...');
+            console.log('[mpesaC2B] Enviando para M-Pesa sandbox...');
             const response = await axios.post(
                 'https://api.sandbox.vm.co.mz:18352/ipg/v1x/c2bPayment/singleStage/',
                 payload,
@@ -77,20 +74,33 @@ generateCode() {
                         'Authorization': 'Bearer ' + token,
                         'Origin': 'developer.mpesa.vm.co.mz',
                     },
+                    timeout: 30000
                 }
             );
 
-            console.log('[mpesaC2B] Resposta da API recebida:', response.data);
+            console.log('[mpesaC2B] SUCESSO! Resposta:', response.data);
 
-            return {
-                status: 'success',
-                data: response.data,
-            };
+            if (response.data.output_ResponseCode === 'INS-0') {
+                return {
+                    status: 'success',
+                    data: response.data,
+                    transactionId: response.data.output_TransactionID
+                };
+            } else {
+                return {
+                    status: 'failed',
+                    error: response.data.output_ResponseDesc,
+                    data: response.data
+                };
+            }
+
         } catch (error) {
-            console.error('[mpesaC2B] Erro na requisição à API:', error.response?.data || error.message);
+            const erro = error.response?.data || error.message;
+            console.error('[mpesaC2B] ERRO NA API:', erro);
             return {
                 status: 'error',
-                message: error.response?.data || error.message,
+                message: 'Falha na comunicação com M-Pesa',
+                data: erro
             };
         }
     }

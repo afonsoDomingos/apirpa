@@ -322,4 +322,10 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   }
 });
 
+
+router.post('/webhook', (req, res) => {
+  console.log('[M-PESA WEBHOOK] Chegou callback:', req.body);
+  res.json({ sucesso: true });
+});
+
 module.exports = router;
