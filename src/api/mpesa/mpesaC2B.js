@@ -13,7 +13,7 @@ class mpesaC2B {
             return encrypted.toString('base64');
         } catch (error) {
             console.error('[mpesaC2B] Erro ao gerar token:', error.message);
-            throw new Error('Erro ao gerar token: ' + error.message);
+            throw new Error('Erro ao fazer gerar token: ' + error.message);
         }
     }
 
