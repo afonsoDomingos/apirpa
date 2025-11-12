@@ -19,33 +19,23 @@ router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, dadosCartao, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
-  // Validação básica
   if (!method || amount === undefined || !phone) {
-    return res.status(400).json({
-      sucesso: false,
-      mensagem: 'Método, telefone e valor são obrigatórios.'
-    });
+    return res.status(400).json({ sucesso: false, mensagem: 'Método, telefone e valor são obrigatórios.' });
   }
 
   amount = Number(amount);
-  if (isNaN(amount) || amount < 0) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido.' });
-  }
+  if (isNaN(amount) || amount < 0) return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido.' });
 
   try {
     let pay;
+    const referenciaUnica = `RpaLive${Date.now()}`;
 
-    // === TENTA PAGAMENTO COM RETENTATIVA (3x) ===
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
-        pay = await Gateway.payment(method, phone, amount, type);
+        pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
         if (pay && pay.status === 'success') break;
-        
-        // Se falhou, espera antes de tentar de novo
-        if (tentativa < 3) {
-          console.log(`[Gateway] Tentativa ${tentativa} falhou. Tentando novamente em 2s...`);
-          await new Promise(r => setTimeout(r, 2000));
-        }
+
+        if (tentativa < 3) await new Promise(r => setTimeout(r, 2000));
       } catch (err) {
         console.error(`[Gateway] Erro na tentativa ${tentativa}:`, err.message);
         if (tentativa === 3) throw err;
@@ -53,22 +43,15 @@ router.post('/processar', verificarToken, async (req, res) => {
       }
     }
 
-    // === SE MESMO ASSIM FALHOU ===
     if (!pay || pay.status !== 'success') {
       let mensagemAmigavel = 'Pagamento falhou. Tente novamente.';
+      const msg = typeof pay?.message === 'string' ? pay.message.toLowerCase() : '';
 
-      if (pay?.message) {
-        const msg = pay.message.toLowerCase();
-        if (msg.includes('saldo') || msg.includes('insuficiente')) {
-          mensagemAmigavel = 'Saldo insuficiente na carteira M-Pesa/Emola.';
-        } else if (msg.includes('timeout') || msg.includes('tempo')) {
-          mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
-        } else if (msg.includes('número') || msg.includes('inválido')) {
-          mensagemAmigavel = 'Número de telefone inválido.';
-        } else if (msg.includes('cancelado') || msg.includes('recusado')) {
-          mensagemAmigavel = 'Pagamento cancelado pelo usuário.';
-        }
-      }
+      if (msg.includes('saldo') || msg.includes('insuficiente')) mensagemAmigavel = 'Saldo insuficiente na carteira M-Pesa/Emola.';
+      else if (msg.includes('timeout') || msg.includes('tempo')) mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
+      else if (msg.includes('número') || msg.includes('inválido')) mensagemAmigavel = 'Número de telefone inválido.';
+      else if (msg.includes('cancelado') || msg.includes('recusado')) mensagemAmigavel = 'Pagamento cancelado pelo usuário.';
+      else if (pay?.output_ResponseCode === 'INS-10') mensagemAmigavel = 'Transação duplicada. Gere uma nova referência.';
 
       return res.status(400).json({
         sucesso: false,
@@ -78,24 +61,18 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
     }
 
-    // === AQUI O PAGAMENTO DEU CERTO! CONTINUA NORMAL ===
-    // (o resto do código é igual: anúncio ou assinatura)
-
+    // === PAGAMENTO CONFIRMADO ===
     if (anuncioId) {
       const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
       if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
 
       const weeks = Number(anuncio.weeks) || 1;
-      const valorEsperado = weeks * 500;
+      const valorEsperado = weeks * PRECO_POR_SEMANA;
 
       if (amount !== valorEsperado && amount !== 0) {
-        return res.status(400).json({
-          sucesso: false,
-          mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).`
-        });
+        return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).` });
       }
 
-      // Grátis ou pago
       if (amount === 0 && method === 'gratuito') {
         const jaUsou = await Pagamento.countDocuments({ anuncioId: anuncio._id, pacote: 'free' });
         if (jaUsou > 0) return res.status(400).json({ sucesso: false, mensagem: 'Já usaste o período grátis.' });
@@ -139,17 +116,14 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
 
     } else {
-      // Assinatura (igual antes)
+      // Assinatura
       if (!pacote || !['mensal', 'anual', 'free'].includes(pacote.toLowerCase())) {
         return res.status(400).json({ sucesso: false, mensagem: 'Pacote inválido.' });
       }
 
-      const valores = { mensal: 150, anual: 1500 };
+      const valores = { mensal: PRECO_MENSAL, anual: PRECO_ANUAL };
       if (amount !== 0 && amount !== valores[pacote.toLowerCase()]) {
-        return res.status(400).json({
-          sucesso: false,
-          mensagem: `Valor deve ser ${valores[pacote.toLowerCase()]} MZN.`
-        });
+        return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${valores[pacote.toLowerCase()]} MZN.` });
       }
 
       const pagamento = new Pagamento({
@@ -169,9 +143,7 @@ router.post('/processar', verificarToken, async (req, res) => {
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: amount === 0 
-          ? 'Plano gratuito ativado!' 
-          : `Plano ${pacote} ativado com sucesso!`,
+        mensagem: amount === 0 ? 'Plano gratuito ativado!' : `Plano ${pacote} ativado com sucesso!`,
         validadeDias: pacote === 'anual' ? 365 : 30
       });
     }
@@ -185,6 +157,7 @@ router.post('/processar', verificarToken, async (req, res) => {
     });
   }
 });
+
 
 // ==============================================================
 // 2. LISTAR PAGAMENTOS DO USUÁRIO LOGADO
