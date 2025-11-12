@@ -2,63 +2,61 @@
 const mongoose = require('mongoose');
 
 const pagamentoSchema = new mongoose.Schema({
-  usuarioId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Usuario', 
+  usuarioId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Usuario',
+    required: true
+  },
+  pacote: {
+    type: String,
     required: true,
-    index: true 
-  },
-  pacote: { 
-    type: String, 
-    required: true, 
-    lowercase: true, 
+    lowercase: true,
     trim: true,
-    enum: ['free', 'anuncio', 'mensal', 'anual'] // ← adicionado pra não salvar lixo
+    enum: ['free', 'anuncio', 'mensal', 'anual'],
+    default: 'free'
   },
-  metodoPagamento: { 
-    type: String, 
-    required: true, 
-    lowercase: true, 
+  metodoPagamento: {
+    type: String,
+    required: true,
+    lowercase: true,
     trim: true,
-    enum: ['gratuito', 'mpesa', 'emola', 'credit_card', 'pix', 'boleto'] // ← validação real
+    enum: ['gratuito', 'mpesa', 'emola', 'credit_card', 'pix', 'boleto'],
+    default: 'gratuito'
   },
-  telefone: { 
-    type: String, 
-    default: null, 
-    trim: true 
+  telefone: {
+    type: String,
+    default: null,
+    trim: true
   },
-  valor: { 
-    type: Number, 
-    required: true, 
-    min: 0 
+  valor: {
+    type: Number,
+    required: true,
+    min: 0
   },
-  tipoPagamento: { 
-    type: String, 
+  tipoPagamento: {
+    type: String,
     enum: ['anuncio', 'assinatura'],
-    default: 'anuncio',
-    lowercase: true, 
-    trim: true 
+    required: true,
+    lowercase: true,
+    trim: true,
+    default: 'assinatura'
   },
-  
-  // MANTIDO PRA NÃO QUEBRAR O BANCO (mas nunca usado)
   dadosCartao: {
     numero: { type: String, default: null },
     nomeTitular: { type: String, default: null, trim: true },
     validade: { type: String, default: null },
     cvv: { type: String, default: null },
   },
-
-  status: { 
-    type: String, 
+  status: {
+    type: String,
     enum: ['pendente', 'aprovado', 'rejeitado', 'reembolsado'],
     default: 'pendente',
-    lowercase: true, 
-    trim: true 
+    lowercase: true,
+    trim: true
   },
-  dataPagamento: { 
-    type: Date, 
-    default: Date.now,
-    index: true
+  dataPagamento: {
+    type: Date,
+    default: Date.now
   },
   gatewayResponse: {
     type: mongoose.Schema.Types.Mixed,
@@ -67,45 +65,33 @@ const pagamentoSchema = new mongoose.Schema({
   anuncioId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Anuncio',
-    default: null,
-    index: true
+    default: null
   }
 }, {
-  timestamps: true // ← createdAt e updatedAt automático
+  timestamps: true
 });
 
-// === BLOQUEIO TOTAL: NUNCA SALVAR CARTÃO (SEGURANÇA 100%) ===
+// === SEGURANÇA: NUNCA SALVAR CARTÃO ===
 pagamentoSchema.pre('save', function (next) {
-  // FORÇA dadosCartao = null SEMPRE
-  this.dadosCartao = {
-    numero: null,
-    nomeTitular: null,
-    validade: null,
-    cvv: null
-  };
-
-  console.log(`[PAGAMENTO] Novo → User: ${this.usuarioId} | ${this.pacote} | ${this.valor} MZN | ${this.metodoPagamento}`);
-  if (this.anuncioId) console.log(`   → Anúncio: ${this.anuncioId}`);
+  this.dadosCartao = { numero: null, nomeTitular: null, validade: null, cvv: null };
   next();
 });
 
 pagamentoSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
-  
-  // Ninguém injeta cartão via update
   if (update?.dadosCartao || update?.$set?.dadosCartao) {
     this.set('dadosCartao', { numero: null, nomeTitular: null, validade: null, cvv: null });
-  }
-
-  if (update?.status) {
-    console.log(`[PAGAMENTO] Status → ${update.status}`);
   }
   next();
 });
 
-// === ÍNDICES OTIMIZADOS (sem warning, rápidos) ===
-/*pagamentoSchema.index({ usuarioId: 1, dataPagamento: -1 }); // lista "meus pagamentos"
-pagamentoSchema.index({ anuncioId: 1 });                    // busca por anúncio
-pagamentoSchema.index({ pacote: 1, status: 1 });            // admin filtrar*/
+// === ÍNDICES OFICIAIS (SÓ AQUI, NUNCA NO CAMPO) ===
+// Removi todos os "index: true" dos campos acima
+pagamentoSchema.index({ usuarioId: 1, dataPagamento: -1 });
+pagamentoSchema.index({ anuncioId: 1 });
+pagamentoSchema.index({ pacote: 1, status: 1 });
+pagamentoSchema.index({ tipoPagamento: 1 });
+pagamentoSchema.index({ dataPagamento: -1 });
+pagamentoSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Pagamento', pagamentoSchema);
