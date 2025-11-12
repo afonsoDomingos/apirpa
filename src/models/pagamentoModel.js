@@ -1,36 +1,54 @@
+// models/pagamentoModel.js
 const mongoose = require('mongoose');
 
 const pagamentoSchema = new mongoose.Schema({
-  usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
-  pacote: { type: String, required: true, lowercase: true, trim: true }, // garantir lower e trim
-  metodoPagamento: { type: String, required: true, lowercase: true, trim: true }, // ex: "mpesa", "emola", "cartao"
+  usuarioId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Usuario',
+    required: true
+  },
+  pacote: {
+    type: String,
+    required: true,
+    lowercase: true,
+    trim: true,
+    enum: ['free', 'anuncio', 'teste', 'mensal', 'anual'],
+    default: 'teste'
+  },
+  metodoPagamento: {
+    type: String,
+    required: true,
+    lowercase: true,
+    trim: true,
+    enum: ['gratuito', 'mpesa', 'emola', 'credit_card', 'pix', 'boleto'],
+    default: 'gratuito'
+  },
   telefone: { type: String, default: null, trim: true },
   valor: { type: Number, required: true, min: 0 },
-  tipoPagamento: { type: String, default: 'c2b', lowercase: true, trim: true }, // ou 'b2c'
-  dadosCartao: {
-    numero: { type: String, default: null },
-    nomeTitular: { type: String, default: null, trim: true },
-    validade: { type: String, default: null },
-    cvv: { type: String, default: null },
+  tipoPagamento: {
+    type: String,
+    enum: ['anuncio', 'assinatura'],
+    required: true,
+    lowercase: true,
+    trim: true,
+    default: 'assinatura'
   },
-  status: { type: String, default: 'pendente', lowercase: true, trim: true }, // pendente, aprovado, recusado
-  dataPagamento: { type: Date, default: Date.now }
-});
+  status: {
+    type: String,
+    enum: ['pendente', 'aprovado', 'rejeitado', 'reembolsado'],
+    default: 'pendente',
+    lowercase: true,
+    trim: true
+  },
+  dataPagamento: { type: Date, default: Date.now },
+  gatewayResponse: { type: mongoose.Schema.Types.Mixed, default: {} },
+  anuncioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Anuncio', default: null }
+}, { timestamps: true });
 
-// Logs antes de salvar
-pagamentoSchema.pre('save', function (next) {
-  console.log(`[PagamentoModel] Criando novo pagamento para usuário ${this.usuarioId}`);
-  console.log(`→ Método: ${this.metodoPagamento}, Valor: ${this.valor}, Status inicial: ${this.status}`);
-  next();
-});
-
-// Logs quando o status é alterado.
-pagamentoSchema.pre('findOneAndUpdate', function (next) {
-  const update = this.getUpdate();
-  if (update?.status) {
-    console.log(`[PagamentoModel] Alterando status do pagamento para: ${update.status}`);
-  }
-  next();
-});
+// Índices úteis
+pagamentoSchema.index({ usuarioId: 1, dataPagamento: -1 });
+pagamentoSchema.index({ anuncioId: 1 });
+pagamentoSchema.index({ pacote: 1, status: 1 });
+pagamentoSchema.index({ dataPagamento: -1 });
 
 module.exports = mongoose.model('Pagamento', pagamentoSchema);
