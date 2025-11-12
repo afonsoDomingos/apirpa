@@ -76,6 +76,7 @@ generateCode() {
                         'Content-Type': 'application/json',
                         'Authorization': 'Bearer ' + token,
                         'Origin': 'developer.mpesa.vm.co.mz',
+                        timeout: 60000,
                     },
                 }
             );
