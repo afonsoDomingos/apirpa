@@ -1,367 +1,136 @@
-// routes/pagamentoRoutes.js
 const express = require('express');
 const router = express.Router();
 const verificarToken = require('../middleware/authMiddleware');
 const Pagamento = require('../models/pagamentoModel');
-const Anuncio = require('../models/Anuncio');
-const Gateway = require('../services/gateway');
-const mongoose = require('mongoose');
+// Corrigido nome do serviço Gateway (antes getway)
+const Gateway = require('../services/gateway'); 
 
-// === PREÇOS FIXOS (em MZN) ===
-const PRECO_TESTE = 25;
-const PRECO_MENSAL = 150;
-const PRECO_ANUAL = 1500;
-const PRECO_POR_SEMANA = 500;
-
-// === VALIDADE EM DIAS ===
-const DIAS_TESTE = 5;
-const DIAS_MENSAL = 30;
-const DIAS_ANUAL = 365;
-
-// Função reutilizável: calcular validade
-const calcularValidade = (pag, hoje = new Date()) => {
-  const p = (pag.pacote || '').toLowerCase().trim();
-  let validade = new Date(pag.dataPagamento);
-  let isMinutes = false;
-
-  if (p === 'free' && pag.anuncioId) {
-    validade.setMinutes(validade.getMinutes() + 10);
-    isMinutes = true;
-  } else if (p === 'teste') {
-    validade.setDate(validade.getDate() + DIAS_TESTE);
-  } else if (p === 'mensal') {
-    validade.setDate(validade.getDate() + DIAS_MENSAL);
-  } else if (p === 'anual') {
-    validade.setDate(validade.getDate() + DIAS_ANUAL);
-  } else if (p === 'anuncio' && pag.anuncioId) {
-    const weeks = Number(pag.anuncioId.weeks) || 1;
-    validade.setDate(validade.getDate() + weeks * 7);
-  }
-
-  const diffMs = validade - hoje;
-  let diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  if (isMinutes && diffMs > 0 && diasRestantes === 0) {
-    diasRestantes = 1;
-  }
-  const expirado = diffMs < 0;
-  diasRestantes = expirado ? 0 : diasRestantes;
-
-  return { validade, diasRestantes, expirado };
-};
-
-// ==============================================================
-// 1. PROCESSAR PAGAMENTO (Síncrono – Sandbox)
-// ==============================================================
+// Rota POST para processar pagamento
 router.post('/processar', verificarToken, async (req, res) => {
-  let { method, phone, amount, type, pacote, anuncioId } = req.body;
+  let { method, phone, amount, type, pacote, dadosCartao } = req.body;
   const usuarioId = req.usuario.id;
 
-  // === VALIDAÇÕES BÁSICAS ===
-  if (!method || amount === undefined) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Método e valor são obrigatórios.' });
+  console.log(`Recebendo solicitação de pagamento para o usuário ${usuarioId}`);
+
+  // Validação básica dos campos obrigatórios
+  if (!pacote || !method || !amount) {
+    return res.status(400).json({
+      sucesso: false,
+      mensagem: 'Pacote, método e valor são obrigatórios.',
+    });
   }
 
-  if (method !== 'gratuito' && !phone) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Telefone é obrigatório para métodos pagos.' });
+  // Sanitize entrada
+  method = method.toLowerCase();
+  type = type ? type.toLowerCase() : null;
+  pacote = pacote.toLowerCase().trim();
+
+  // Validar amount (deve ser número positivo)
+  if (isNaN(amount) || amount <= 0) {
+    return res.status(400).json({
+      sucesso: false,
+      mensagem: 'Valor inválido para pagamento.',
+    });
   }
 
-  // === VALIDAÇÃO E NORMALIZAÇÃO DE TELEFONE ===
-  if (phone) {
-    const cleaned = phone.replace(/[^0-9]/g, ''); // Remove +, espaços, etc.
-    const isValid = /^(84|85|82|83)\d{7}$/.test(cleaned) || 
-                    /^258(84|85|82|83)\d{7}$/.test(cleaned);
-
-    if (!isValid) {
-      return res.status(400).json({ 
-        sucesso: false, 
-        mensagem: 'Telefone inválido. Use: 841234567, 258841234567 ou +258841234567' 
-      });
-    }
-
-    // Normaliza: remove 258 e salva só 9 dígitos
-    phone = cleaned.replace(/^258/, '');
-  }
-
-  amount = parseInt(amount, 10);
-  if (isNaN(amount) || amount < 0) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido.' });
-  }
-  if (amount === 0 && method !== 'gratuito') {
-    return res.status(400).json({ sucesso: false, mensagem: 'Valor zero só permitido para método gratuito.' });
+  // Validação telefone para pagamentos que precisam
+  if ((method === 'mpesa' || method === 'emola') && !phone) {
+    return res.status(400).json({
+      sucesso: false,
+      mensagem: `Telefone ausente para pagamento via ${method}.`,
+    });
   }
 
   try {
-    const referenciaUnica = `TEST${Date.now()}${Math.floor(Math.random() * 10000)}`;
-    let pay;
+    // Executa pagamento via gateway
+    const pay = await Gateway.payment(method, phone, amount, type);
+    console.log('Resposta do Gateway:', pay);
 
-    // 3 tentativas com delay
-    for (let tentativa = 1; tentativa <= 3; tentativa++) {
-      try {
-        pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
-        if (pay && pay.status === 'success') break;
-        if (tentativa < 3) await new Promise(r => setTimeout(r, 2000));
-      } catch (err) {
-        console.error(`[Gateway] Tentativa ${tentativa} falhou:`, err.message);
-        if (tentativa === 3) throw err;
-        await new Promise(r => setTimeout(r, 2000));
-      }
+    if (pay.status !== 'success') {
+      return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
     }
 
-    if (!pay || pay.status !== 'success') {
-      let mensagemAmigavel = 'Pagamento falhou. Tente novamente.';
-      const msg = typeof pay?.message === 'string' ? pay.message.toLowerCase() : '';
+    const novoPagamento = new Pagamento({
+      pacote,
+      metodoPagamento: method,
+      valor: amount,
+      telefone: phone || null,
+      
+      dadosCartao: dadosCartao || null,
+      status: 'aprovado',
+      usuarioId: usuarioId, // campo consistente com o modelo
+      tipoPagamento: type,
+      dataPagamento: new Date(),
+      gatewayResponse: pay.data || null,
+    });
 
-      if (msg.includes('saldo') || msg.includes('insuficiente')) mensagemAmigavel = 'Saldo insuficiente na carteira.';
-      else if (msg.includes('timeout') || msg.includes('tempo')) mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
-      else if (msg.includes('cancelado') || msg.includes('recusado')) mensagemAmigavel = 'Pagamento cancelado.';
+    const pagamentoSalvo = await novoPagamento.save();
 
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: mensagemAmigavel,
-        detalhes: pay || { erro: 'Gateway não respondeu' }
-      });
-    }
+    console.log('Pagamento realizado com sucesso e salvo no DB.');
 
-    // === ANÚNCIO ===
-    if (anuncioId) {
-      if (!mongoose.Types.ObjectId.isValid(anuncioId)) {
-        return res.status(400).json({ sucesso: false, mensagem: 'ID do anúncio inválido.' });
-      }
-
-      const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
-      if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
-
-      const weeks = Number(anuncio.weeks) || 1;
-      if (isNaN(weeks) || weeks < 1) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Número de semanas inválido no anúncio.' });
-      }
-      const valorEsperado = weeks * PRECO_POR_SEMANA;
-
-      // === GRATUITO (10 MIN) ===
-      if (amount === 0 && method === 'gratuito') {
-        const jaUsou = await Pagamento.findOne({
-          anuncioId: anuncio._id,
-          pacote: 'free',
-          metodoPagamento: 'gratuito'
-        });
-
-        if (jaUsou) {
-          return res.status(400).json({ sucesso: false, mensagem: 'Já usaste o período grátis neste anúncio.' });
-        }
-
-        anuncio.status = 'active';
-        await anuncio.save();
-
-        const pagamento = new Pagamento({
-          usuarioId,
-          pacote: 'free',
-          metodoPagamento: 'gratuito',
-          valor: 0,
-          telefone: null,
-          status: 'aprovado',
-          tipoPagamento: 'anuncio',
-          dataPagamento: new Date(),
-          gatewayResponse: { message: 'Grátis 10 min (sandbox)', reference: referenciaUnica },
-          anuncioId: anuncio._id
-        });
-        await pagamento.save();
-
-        return res.status(201).json({
-          sucesso: true,
-          mensagem: 'Anúncio ativado GRATUITAMENTE por 10 minutos!',
-          expiraEm: new Date(Date.now() + 10 * 60 * 1000)
-        });
-      }
-
-      // === ANÚNCIO PAGO ===
-      if (amount !== valorEsperado) {
-        return res.status(400).json({
-          sucesso: false,
-          mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).`
-        });
-      }
-
-      anuncio.status = 'active';
-      anuncio.amount = amount;
-      await anuncio.save();
-
-      const pagamento = new Pagamento({
-        usuarioId,
-        pacote: 'anuncio',
-        metodoPagamento: method,
-        valor: amount,
-        telefone: phone,
-        status: 'aprovado',
-        tipoPagamento: 'anuncio',
-        dataPagamento: new Date(),
-        gatewayResponse: { ...pay.data, reference: referenciaUnica },
-        anuncioId: anuncio._id
-      });
-      await pagamento.save();
-
-      return res.status(201).json({
-        sucesso: true,
-        mensagem: 'Anúncio pago com sucesso!',
-        validadeDias: weeks * 7
-      });
-
-    } else {
-      // === ASSINATURA ===
-      if (!pacote || !['teste', 'mensal', 'anual'].includes(pacote.toLowerCase())) {
-        return res.status(400).json({ 
-          sucesso: false, 
-          mensagem: 'Pacote inválido. Use: teste, mensal ou anual.' 
-        });
-      }
-
-      const pacotes = {
-        teste: { preco: PRECO_TESTE, dias: DIAS_TESTE },
-        mensal: { preco: PRECO_MENSAL, dias: DIAS_MENSAL },
-        anual: { preco: PRECO_ANUAL, dias: DIAS_ANUAL }
-      };
-      const config = pacotes[pacote.toLowerCase()];
-
-      if (amount !== config.preco) {
-        return res.status(400).json({
-          sucesso: false,
-          mensagem: `Valor deve ser ${config.preco} MZN para o pacote ${pacote}.`
-        });
-      }
-
-      const pagamento = new Pagamento({
-        usuarioId,
-        pacote: pacote.toLowerCase(),
-        metodoPagamento: method,
-        valor: amount,
-        telefone: phone,
-        status: 'aprovado',
-        tipoPagamento: 'assinatura',
-        dataPagamento: new Date(),
-        gatewayResponse: { ...pay.data, reference: referenciaUnica },
-        anuncioId: null
-      });
-      await pagamento.save();
-
-      return res.status(201).json({
-        sucesso: true,
-        mensagem: `Pacote ${pacote} ativado com sucesso!`,
-        validadeDias: config.dias,
-        expiraEm: new Date(Date.now() + config.dias * 24 * 60 * 60 * 1000)
-      });
-    }
+    return res.status(201).json({
+      sucesso: true,
+      mensagem: 'Pagamento realizado com sucesso.',
+      pagamento: pagamentoSalvo,
+    });
 
   } catch (error) {
-    console.error('ERRO NO PAGAMENTO (SANDBOX):', error);
-    return res.status(500).json({
-      sucesso: false,
-      mensagem: 'Erro interno. Tente novamente.',
-      erro: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    console.error('Erro geral ao processar pagamento:', error);
+    return res.status(500).json({ sucesso: false, mensagem: 'Erro interno do servidor.' });
   }
 });
 
-// ==============================================================
-// 2. LISTAR MEUS PAGAMENTOS
-// ==============================================================
+// Listar pagamentos do usuário logado com validade e status dinâmico
 router.get("/meus", verificarToken, async (req, res) => {
   try {
-    const pagamentos = await Pagamento.find({ usuarioId: req.usuario.id })
-      .sort({ dataPagamento: -1 })
-      .populate({
-        path: 'anuncioId',
-        select: 'name image status weeks',
-        match: { _id: { $exists: true } }
-      })
-      .limit(50);
+    const usuarioId = req.usuario.id;
+
+    // Busca com campo correto (usuarioId)
+    const pagamentos = await Pagamento.find({ usuarioId }).sort({ dataPagamento: -1 });
 
     const hoje = new Date();
-    const lista = pagamentos.map(pag => {
-      const { validade, diasRestantes, expirado } = calcularValidade(pag, hoje);
+
+    const pagamentosComValidade = pagamentos.map(pag => {
+      const validade = new Date(pag.dataPagamento);
+      const nomePacote = pag.pacote?.toLowerCase().trim();
+      const diasDeValidade = nomePacote === "anual" ? 365 : 30;
+
+      validade.setDate(validade.getDate() + diasDeValidade);
+
+      const diffMs = validade - hoje;
+      const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      const expirado = diasRestantes < 0;
+      const status = expirado ? 'expirado' : 'pago';
 
       return {
         ...pag._doc,
         validade,
         diasRestantes,
-        status: expirado ? 'expirado' : 'ativo',
-        tipo: pag.anuncioId ? 'anuncio' : 'assinatura',
-        anuncio: pag.anuncioId ? {
-          id: pag.anuncioId._id,
-          name: pag.anuncioId.name,
-          image: pag.anuncioId.image,
-          status: pag.anuncioId.status,
-          weeks: pag.anuncioId.weeks
-        } : null
+        status
       };
     });
 
-    res.json({ sucesso: true, total: lista.length, pagamentos: lista });
-  } catch (error) {
-    console.error("Erro ao buscar pagamentos:", error);
-    res.status(500).json({ sucesso: false, mensagem: "Erro ao carregar pagamentos." });
-  }
-});
-
-// ==============================================================
-// 3. ADMIN: LISTAR TODOS
-// ==============================================================
-router.get("/", verificarToken, async (req, res) => {
-  if (req.usuario.role !== "admin") {
-    return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
-  }
-
-  try {
-    const pagamentos = await Pagamento.find()
-      .populate("usuarioId", "nome email")
-      .populate({
-        path: 'anuncioId',
-        select: 'name image status weeks',
-        match: { _id: { $exists: true } }
-      })
-      .sort({ dataPagamento: -1 })
-      .limit(100);
-
-    const hoje = new Date();
-    const lista = pagamentos.map(pag => {
-      const { validade, diasRestantes, expirado } = calcularValidade(pag, hoje);
-
-      return {
-        ...pag._doc,
-        validade,
-        diasRestantes,
-        status: expirado ? "expirado" : "ativo",
-        tipo: pag.anuncioId ? 'anuncio' : 'assinatura',
-        usuario: pag.usuarioId ? { nome: pag.usuarioId.nome, email: pag.usuarioId.email } : null,
-        anuncio: pag.anuncioId ? {
-          id: pag.anuncioId._id,
-          name: pag.anuncioId.name,
-          image: pag.anuncioId.image,
-          status: pag.anuncioId.status,
-          weeks: pag.anuncioId.weeks
-        } : null
-      };
+    res.json({
+      sucesso: true,
+      total: pagamentos.length,
+      pagamentos: pagamentosComValidade,
     });
-
-    res.json({ sucesso: true, total: lista.length, pagamentos: lista });
   } catch (error) {
-    console.error("Erro ADMIN ao buscar pagamentos:", error);
-    res.status(500).json({ sucesso: false, mensagem: "Erro ao carregar pagamentos." });
+    console.error("Erro ao buscar pagamentos do usuário:", error);
+    res.status(500).json({
+      sucesso: false,
+      mensagem: "Erro ao buscar pagamentos.",
+    });
   }
 });
 
-// ==============================================================
-// 4. BUSCAR POR ID
-// ==============================================================
+// Buscar pagamento por ID (só dono ou admin)
 router.get("/:id", verificarToken, async (req, res) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    return res.status(400).json({ sucesso: false, mensagem: "ID inválido." });
-  }
-
   try {
-    const pagamento = await Pagamento.findById(req.params.id)
-      .populate('anuncioId', 'name image status weeks')
-      .populate('usuarioId', 'nome email');
-
-    if (!pagamento) return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
+    const pagamento = await Pagamento.findById(req.params.id);
+    if (!pagamento) {
+      return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
+    }
 
     if (pagamento.usuarioId.toString() !== req.usuario.id && req.usuario.role !== "admin") {
       return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
@@ -369,32 +138,22 @@ router.get("/:id", verificarToken, async (req, res) => {
 
     res.json({ sucesso: true, pagamento: pagamento.toObject() });
   } catch (error) {
-    console.error("Erro ao buscar pagamento por ID:", error);
+    console.error("Erro ao buscar pagamento:", error);
     res.status(500).json({ sucesso: false, mensagem: "Erro ao buscar pagamento." });
   }
 });
 
-// ==============================================================
-// 5. EXCLUIR (ADMIN)
-// ==============================================================
+// Excluir pagamento (admin)
 router.delete("/:id", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") {
     return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
   }
 
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    return res.status(400).json({ sucesso: false, mensagem: "ID inválido." });
-  }
-
   try {
-    const pagamento = await Pagamento.findById(req.params.id);
-    if (!pagamento) return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
-
-    if (pagamento.anuncioId) {
-      await Anuncio.findByIdAndUpdate(pagamento.anuncioId, { status: 'paused' });
+    const pagamentoRemovido = await Pagamento.findByIdAndDelete(req.params.id);
+    if (!pagamentoRemovido) {
+      return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
     }
-
-    await Pagamento.findByIdAndDelete(req.params.id);
     res.json({ sucesso: true, mensagem: "Pagamento removido com sucesso." });
   } catch (error) {
     console.error("Erro ao remover pagamento:", error);
@@ -402,31 +161,31 @@ router.delete("/:id", verificarToken, async (req, res) => {
   }
 });
 
-// ==============================================================
-// 6. VERIFICAR ASSINATURA ATIVA
-// ==============================================================
+// Verificar assinatura ativa
 router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   try {
-    const ultimo = await Pagamento.findOne({
-      usuarioId: req.usuario.id,
-      pacote: { $in: ['teste', 'mensal', 'anual'] },
-      status: 'aprovado'
-    }).sort({ dataPagamento: -1 });
+    const usuarioId = req.usuario.id;
 
-    if (!ultimo) {
-      return res.json({ ativa: false, diasRestantes: 0, pacote: null });
+    const pagamentoMaisRecente = await Pagamento.findOne({ usuarioId }).sort({ dataPagamento: -1 });
+
+    if (!pagamentoMaisRecente) {
+      return res.json({ ativa: false, diasRestantes: null });
     }
 
-    const { validade, diasRestantes, expirado } = calcularValidade(ultimo);
+    const nomePacote = pagamentoMaisRecente.pacote?.toLowerCase().trim();
+    const diasDeValidade = nomePacote === "anual" ? 365 : 30;
 
-    res.json({
-      ativa: !expirado,
-      diasRestantes,
-      pacote: ultimo.pacote,
-      expiraEm: validade
-    });
+    const validade = new Date(pagamentoMaisRecente.dataPagamento);
+    validade.setDate(validade.getDate() + diasDeValidade);
+
+    const hoje = new Date();
+    const diffMs = validade - hoje;
+    const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const assinaturaAtiva = diasRestantes >= 0;
+
+    return res.json({ ativa: assinaturaAtiva, diasRestantes });
   } catch (error) {
-    console.error("Erro ao verificar assinatura ativa:", error);
+    console.error("Erro ao tentar verificar assinatura:", error);
     res.status(500).json({ sucesso: false, mensagem: "Erro ao verificar assinatura." });
   }
 });
