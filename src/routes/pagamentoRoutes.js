@@ -18,7 +18,7 @@ const DIAS_TESTE = 5;
 const DIAS_MENSAL = 30;
 const DIAS_ANUAL = 365;
 
-// Função reutilizável para calcular validade e dias restantes
+// Função reutilizável: calcular validade
 const calcularValidade = (pag, hoje = new Date()) => {
   const p = (pag.pacote || '').toLowerCase().trim();
   let validade = new Date(pag.dataPagamento);
@@ -56,15 +56,30 @@ router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
-  // Validações básicas
+  // === VALIDAÇÕES BÁSICAS ===
   if (!method || amount === undefined) {
     return res.status(400).json({ sucesso: false, mensagem: 'Método e valor são obrigatórios.' });
   }
+
   if (method !== 'gratuito' && !phone) {
     return res.status(400).json({ sucesso: false, mensagem: 'Telefone é obrigatório para métodos pagos.' });
   }
-  if (phone && !/^(84|85|82|83)\d{7}$/.test(phone)) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Número de telefone inválido.' });
+
+  // === VALIDAÇÃO E NORMALIZAÇÃO DE TELEFONE ===
+  if (phone) {
+    const cleaned = phone.replace(/[^0-9]/g, ''); // Remove +, espaços, etc.
+    const isValid = /^(84|85|82|83)\d{7}$/.test(cleaned) || 
+                    /^258(84|85|82|83)\d{7}$/.test(cleaned);
+
+    if (!isValid) {
+      return res.status(400).json({ 
+        sucesso: false, 
+        mensagem: 'Telefone inválido. Use: 841234567, 258841234567 ou +258841234567' 
+      });
+    }
+
+    // Normaliza: remove 258 e salva só 9 dígitos
+    phone = cleaned.replace(/^258/, '');
   }
 
   amount = parseInt(amount, 10);
@@ -98,7 +113,6 @@ router.post('/processar', verificarToken, async (req, res) => {
 
       if (msg.includes('saldo') || msg.includes('insuficiente')) mensagemAmigavel = 'Saldo insuficiente na carteira.';
       else if (msg.includes('timeout') || msg.includes('tempo')) mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
-      else if (msg.includes('número') || msg.includes('inválido')) mensagemAmigavel = 'Número de telefone inválido.';
       else if (msg.includes('cancelado') || msg.includes('recusado')) mensagemAmigavel = 'Pagamento cancelado.';
 
       return res.status(400).json({
