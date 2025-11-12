@@ -30,6 +30,7 @@ const calcularValidade = (pag, hoje = new Date()) => {
   } else if (p === 'anual') {
     validade.setDate(validade.getDate() + DIAS_ANUAL);
   } else if (p === 'anuncio' && pag.anuncioId) {
+    // CORRIGIDO: usa weeks do ANÚNCIO, não do pagamento
     const weeks = Number(pag.anuncioId.weeks) || 1;
     validade.setDate(validade.getDate() + weeks * 7);
   }
@@ -49,7 +50,7 @@ const calcularValidade = (pag, hoje = new Date()) => {
 // 1. PROCESSAR PAGAMENTO
 // ==============================================================
 router.post('/processar', verificarToken, async (req, res) => {
-  let { method, phone, amount, type, pacote, anuncioId } = req.body;
+  let { method, phone, amount, type, pacote, anuncioId, weeks } = req.body;
   const usuarioId = req.usuario.id;
 
   // VALIDAÇÕES
@@ -88,15 +89,27 @@ router.post('/processar', verificarToken, async (req, res) => {
       const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
       if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
 
-      const weeks = Number(anuncio.weeks) || 1;
-      const valorEsperado = weeks * PRECO_POR_SEMANA;
+      // === RECEBE weeks DO FRONTEND ===
+      const weeksNum = parseInt(weeks, 10);
+      if (!weeksNum || weeksNum < 1 || weeksNum > 4) {
+        return res.status(400).json({
+          sucesso: false,
+          mensagem: 'Selecione uma duração válida: 1 a 4 semanas.'
+        });
+      }
 
+      const valorEsperado = weeksNum * PRECO_POR_SEMANA;
       if (amount !== valorEsperado) {
         return res.status(400).json({
           sucesso: false,
-          mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).`
+          mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeksNum} semana(s).`
         });
       }
+
+      // === ATUALIZA O ANÚNCIO ===
+      anuncio.weeks = weeksNum;
+      anuncio.amount = amount;
+      await anuncio.save();
 
       let pay;
       if (method !== 'teste') {
@@ -118,7 +131,10 @@ router.post('/processar', verificarToken, async (req, res) => {
         }
       }
 
+      // === ATIVAR ANÚNCIO ===
       anuncio.status = 'active';
+      anuncio.dataAtivacao = new Date();
+      anuncio.dataExpiracao = new Date(Date.now() + weeksNum * 7 * 24 * 60 * 60 * 1000);
       await anuncio.save();
 
       const pagamento = new Pagamento({
@@ -138,7 +154,10 @@ router.post('/processar', verificarToken, async (req, res) => {
       return res.status(201).json({
         sucesso: true,
         mensagem: 'Anúncio ativado com sucesso!',
-        validadeDias: weeks * 7
+        anuncioId: anuncio._id,
+        weeks: weeksNum,
+        validadeDias: weeksNum * 7,
+        dataExpiracao: anuncio.dataExpiracao
       });
     }
 
