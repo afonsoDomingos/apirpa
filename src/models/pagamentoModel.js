@@ -12,8 +12,8 @@ const pagamentoSchema = new mongoose.Schema({
     required: true,
     lowercase: true,
     trim: true,
-    enum: ['free', 'anuncio', 'mensal', 'anual'],
-    default: 'free'
+    enum: ['free', 'anuncio', 'teste', 'mensal', 'anual'],
+    default: 'teste'
   },
   metodoPagamento: {
     type: String,
@@ -85,8 +85,7 @@ pagamentoSchema.pre('findOneAndUpdate', function (next) {
   next();
 });
 
-// === ÍNDICES OFICIAIS (SÓ AQUI, NUNCA NO CAMPO) ===
-// Removi todos os "index: true" dos campos acima
+// === ÍNDICES OFICIAIS ===
 pagamentoSchema.index({ usuarioId: 1, dataPagamento: -1 });
 pagamentoSchema.index({ anuncioId: 1 });
 pagamentoSchema.index({ pacote: 1, status: 1 });

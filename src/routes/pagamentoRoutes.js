@@ -8,18 +8,23 @@ const Gateway = require('../services/gateway');
 const mongoose = require('mongoose');
 
 // === PREÇOS FIXOS (em MZN) ===
-const PRECO_POR_SEMANA = 500;
+const PRECO_TESTE = 25;
 const PRECO_MENSAL = 150;
 const PRECO_ANUAL = 1500;
+const PRECO_POR_SEMANA = 500;
+
+// === VALIDADE EM DIAS ===
+const DIAS_TESTE = 5;
+const DIAS_MENSAL = 30;
+const DIAS_ANUAL = 365;
 
 // ==============================================================
-// 1. PROCESSAR PAGAMENTO (CORRIGIDO)
+// 1. PROCESSAR PAGAMENTO
 // ==============================================================
 router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, dadosCartao, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
-  // === VALIDAÇÃO BÁSICA ===
   if (!method || amount === undefined || !phone) {
     return res.status(400).json({ sucesso: false, mensagem: 'Método, telefone e valor são obrigatórios.' });
   }
@@ -30,15 +35,13 @@ router.post('/processar', verificarToken, async (req, res) => {
   }
 
   try {
-    // === GERAR REFERÊNCIA ÚNICA UMA VEZ ===
     const referenciaUnica = `RpaLive${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
-
     let pay;
+
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
         pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
         if (pay && pay.status === 'success') break;
-
         if (tentativa < 3) await new Promise(r => setTimeout(r, 2000));
       } catch (err) {
         console.error(`[Gateway] Tentativa ${tentativa} falhou:`, err.message);
@@ -65,9 +68,8 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
     }
 
-    // === PAGAMENTO APROVADO ===
+    // === ANÚNCIO ===
     if (anuncioId) {
-      // === VALIDAÇÃO DO ANÚNCIO ===
       if (!mongoose.Types.ObjectId.isValid(anuncioId)) {
         return res.status(400).json({ sucesso: false, mensagem: 'ID do anúncio inválido.' });
       }
@@ -149,16 +151,26 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
 
     } else {
-      // === ASSINATURA (SÓ MENSAL/ANUAL) ===
-      if (!pacote || !['mensal', 'anual'].includes(pacote.toLowerCase())) {
-        return res.status(400).json({ sucesso: false, mensagem: 'Pacote inválido. Use mensal ou anual.' });
+      // === ASSINATURA: teste, mensal, anual ===
+      if (!pacote || !['teste', 'mensal', 'anual'].includes(pacote.toLowerCase())) {
+        return res.status(400).json({ 
+          sucesso: false, 
+          mensagem: 'Pacote inválido. Use: teste, mensal ou anual.' 
+        });
       }
 
-      const valores = { mensal: PRECO_MENSAL, anual: PRECO_ANUAL };
-      if (amount !== valores[pacote.toLowerCase()]) {
+      const pacotes = {
+        teste: { preco: PRECO_TESTE, dias: DIAS_TESTE },
+        mensal: { preco: PRECO_MENSAL, dias: DIAS_MENSAL },
+        anual: { preco: PRECO_ANUAL, dias: DIAS_ANUAL }
+      };
+
+      const config = pacotes[pacote.toLowerCase()];
+
+      if (amount !== config.preco) {
         return res.status(400).json({
           sucesso: false,
-          mensagem: `Valor deve ser ${valores[pacote.toLowerCase()]} MZN para o plano ${pacote}.`
+          mensagem: `Valor deve ser ${config.preco} MZN para o pacote ${pacote}.`
         });
       }
 
@@ -179,8 +191,9 @@ router.post('/processar', verificarToken, async (req, res) => {
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: `Plano ${pacote} ativado com sucesso!`,
-        validadeDias: pacote.toLowerCase() === 'anual' ? 365 : 30
+        mensagem: `Pacote ${pacote} ativado com sucesso!`,
+        validadeDias: config.dias,
+        expiraEm: new Date(Date.now() + config.dias * 24 * 60 * 60 * 1000)
       });
     }
 
@@ -214,10 +227,12 @@ router.get("/meus", verificarToken, async (req, res) => {
 
       if (p === 'free' && pag.anuncioId) {
         validade.setMinutes(validade.getMinutes() + 10);
-      } else if (p === 'anual') {
-        validade.setDate(validade.getDate() + 365);
+      } else if (p === 'teste') {
+        validade.setDate(validade.getDate() + 5);
       } else if (p === 'mensal') {
         validade.setDate(validade.getDate() + 30);
+      } else if (p === 'anual') {
+        validade.setDate(validade.getDate() + 365);
       } else if (p === 'anuncio' && pag.anuncioId) {
         const weeks = Number(pag.anuncioId.weeks) || 1;
         validade.setDate(validade.getDate() + weeks * 7);
@@ -274,8 +289,9 @@ router.get("/", verificarToken, async (req, res) => {
       let validade = new Date(pag.dataPagamento);
 
       if (p === 'free' && pag.anuncioId) validade.setMinutes(validade.getMinutes() + 10);
-      else if (p === 'anual') validade.setDate(validade.getDate() + 365);
+      else if (p === 'teste') validade.setDate(validade.getDate() + 5);
       else if (p === 'mensal') validade.setDate(validade.getDate() + 30);
+      else if (p === 'anual') validade.setDate(validade.getDate() + 365);
       else if (p === 'anuncio' && pag.anuncioId) {
         const weeks = Number(pag.anuncioId.weeks) || 1;
         validade.setDate(validade.getDate() + weeks * 7);
@@ -370,7 +386,7 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   try {
     const ultimo = await Pagamento.findOne({
       usuarioId: req.usuario.id,
-      pacote: { $in: ['mensal', 'anual'] },
+      pacote: { $in: ['teste', 'mensal', 'anual'] },
       status: 'aprovado'
     }).sort({ dataPagamento: -1 });
 
@@ -378,7 +394,13 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
       return res.json({ ativa: false, diasRestantes: 0, pacote: null });
     }
 
-    const dias = ultimo.pacote === 'anual' ? 365 : 30;
+    const diasPorPacote = {
+      teste: 5,
+      mensal: 30,
+      anual: 365
+    };
+
+    const dias = diasPorPacote[ultimo.pacote];
     const validade = new Date(ultimo.dataPagamento);
     validade.setDate(validade.getDate() + dias);
 
@@ -400,17 +422,15 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
 });
 
 // ==============================================================
-// 7. WEBHOOK (MELHORADO)
+// 7. WEBHOOK
 // ==============================================================
 router.post('/webhook', async (req, res) => {
   console.log('[WEBHOOK] Dados recebidos:', req.body);
-  const { reference, status, transactionId } = req.body;
+  const { reference, status } = req.body;
 
   try {
     const pagamento = await Pagamento.findOne({ 'gatewayResponse.reference': reference });
-    if (!pagamento) {
-      return res.json({ recebido: true, status: 'ignorado' });
-    }
+    if (!pagamento) return res.json({ recebido: true, status: 'ignorado' });
 
     pagamento.status = status === 'success' ? 'aprovado' : 'rejeitado';
     pagamento.gatewayResponse = { ...pagamento.gatewayResponse, ...req.body };
