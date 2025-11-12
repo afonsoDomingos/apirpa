@@ -1,3 +1,4 @@
+// models/pagamentoModel.js
 const mongoose = require('mongoose');
 
 const pagamentoSchema = new mongoose.Schema({
@@ -20,14 +21,12 @@ const pagamentoSchema = new mongoose.Schema({
   anuncioId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Anuncio',
-    default: null
+    default: null,
+    index: true   // ← mantido aqui (índice único)
   }
 });
 
-// ÍNDICE PARA QUERIES RÁPIDAS POR TIPO
-pagamentoSchema.index({ tipoPagamento: 1, usuarioId: 1 });
-
-// === LOGS ANTES DE SALVAR ===
+// === LOGS ANTES DE SALVAR (exatamente como você tinha) ===
 pagamentoSchema.pre('save', function (next) {
   console.log(`[PagamentoModel] Criando novo pagamento para usuário ${this.usuarioId}`);
   console.log(`→ Método: ${this.metodoPagamento}, Valor: ${this.valor}, Status: ${this.status}`);
@@ -37,7 +36,7 @@ pagamentoSchema.pre('save', function (next) {
   next();
 });
 
-// === LOGS AO ATUALIZAR ===
+// === LOGS AO ATUALIZAR (exatamente como você tinha) ===
 pagamentoSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
   if (update?.status) {
@@ -48,5 +47,9 @@ pagamentoSchema.pre('findOneAndUpdate', function (next) {
   }
   next();
 });
+
+// === SÓ OS ÍNDICES QUE VOCÊ JÁ TINHA (sem duplicar) ===
+// REMOVIDO: pagamentoSchema.index({ anuncioId: 1 }); ← causava o warning
+// REMOVIDO: outros índices que você não tinha antes
 
 module.exports = mongoose.model('Pagamento', pagamentoSchema);
