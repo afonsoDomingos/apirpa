@@ -50,6 +50,9 @@ const anuncioSchema = new mongoose.Schema({
     enum: ['pending', 'active', 'paused', 'expired', 'rejected'],
     default: 'pending'
   },
+  clicks: 
+  { type: Number, 
+    default: 0 }, 
   views: {
     type: Number,
     default: 0
