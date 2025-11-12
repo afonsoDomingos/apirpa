@@ -29,7 +29,7 @@ const anuncioSchema = new mongoose.Schema({
   ctaLink: {
     type: String,
     trim: true},
-    
+
   phone: {
     type: String,
     trim: true
@@ -69,7 +69,6 @@ const anuncioSchema = new mongoose.Schema({
 // === ÍNDICES (SÓ AQUI, NUNCA NO CAMPO) ===
 anuncioSchema.index({ userId: 1, status: 1 });
 anuncioSchema.index({ status: 1, dataExpiracao: 1 });
-anuncioSchema.index({ category: 1 });
 anuncioSchema.index({ featured: 1 });
 anuncioSchema.index({ status: 1 });
 
