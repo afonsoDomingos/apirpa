@@ -1,3 +1,4 @@
+// routes/pagamentoRoutes.js
 const express = require('express');
 const router = express.Router();
 const verificarToken = require('../middleware/authMiddleware');
@@ -5,32 +6,14 @@ const Pagamento = require('../models/pagamentoModel');
 const Anuncio = require('../models/Anuncio');
 const Gateway = require('../services/gateway');
 
-// === PREÇOS OFICIAIS (em meticais, sem vírgula) ===
-const PRECO_POR_SEMANA = 500;     // 500 MZN por semana
-const PRECO_MENSAL = 150;         // 150 MZN
-const PRECO_ANUAL = 1500;         // 1500 MZN
+// === PREÇOS FIXOS (em meticais) ===
+const PRECO_POR_SEMANA = 500;
+const PRECO_MENSAL = 150;
+const PRECO_ANUAL = 1500;
 
-// === LOGOS DOS MÉTODOS E PLANOS ===
-const LOGOS = {
-  metodo: {
-    gratuito: 'https://i.imgur.com/8vT0KzP.png',     // ícone grátis
-    credit_card: 'https://i.imgur.com/3j8vG7Q.png', // cartão
-    pix: 'https://i.imgur.com/2R6zS29.png',         // PIX / M-Pesa
-    boleto: 'https://i.imgur.com/5kJ3pLm.png',      // boleto
-    mpesa: 'https://i.imgur.com/7xP2mZx.png',       // M-Pesa
-    emola: 'https://i.imgur.com/9vR4kLm.png',       // e-Mola
-  },
-  pacote: {
-    free: 'https://i.imgur.com/Qw2xRtY.png',        // grátis
-    anuncio: 'https://i.imgur.com/X5vN8pL.png',     // destaque anúncio
-    mensal: 'https://i.imgur.com/Z3kL9mW.png',      // coroa mensal
-    anual: 'https://i.imgur.com/H7jKp0v.png',       // coroa anual VIP
-  }
-};
-
-// ROTA: PROCESSAR PAGAMENTO
+// === ROTA: PROCESSAR PAGAMENTO (SEM LOGOS) ===
 router.post('/processar', verificarToken, async (req, res) => {
-  const { method, phone, amount, type, pacote, dadosCartao, anuncioId } = req.body;
+  const { method, phone, amount, type, pacote, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
   if (!method || amount === undefined) {
@@ -81,9 +64,7 @@ router.post('/processar', verificarToken, async (req, res) => {
           mensagem: 'Anúncio grátis ativado por 10 minutos!',
           pagamento,
           anuncio,
-          expiraEm: new Date(Date.now() + 10 * 60 * 1000),
-          logo: LOGOS.pacote.free,
-          metodoLogo: LOGOS.metodo.gratuito
+          expiraEm: new Date(Date.now() + 10 * 60 * 1000)
         });
       }
 
@@ -91,7 +72,7 @@ router.post('/processar', verificarToken, async (req, res) => {
       if (Number(amount) !== valorEsperado) {
         return res.status(400).json({
           sucesso: false,
-          mensagem: `Valor deve ser ${valorEsperado} MZN (${weeks} semana${weeks > 1 ? 's' : ''})`,
+          mensagem: `Valor deve ser ${valorEsperado} MZN (${weeks} semana${weeks > 1 ? 's' : ''})`
         });
       }
 
@@ -124,9 +105,7 @@ router.post('/processar', verificarToken, async (req, res) => {
         sucesso: true,
         mensagem: 'Anúncio pago ativado!',
         pagamento: salvo,
-        anuncio,
-        logo: LOGOS.pacote.anuncio,
-        metodoLogo: LOGOS.metodo[method] || LOGOS.metodo.credit_card
+        anuncio
       });
     }
 
@@ -136,7 +115,7 @@ router.post('/processar', verificarToken, async (req, res) => {
       if (Number(amount) !== valores[pacote]) {
         return res.status(400).json({
           sucesso: false,
-          mensagem: `Valor deve ser ${valores[pacote]} MZN para plano ${pacote}.`,
+          mensagem: `Valor deve ser ${valores[pacote]} MZN para plano ${pacote}.`
         });
       }
 
@@ -165,9 +144,7 @@ router.post('/processar', verificarToken, async (req, res) => {
         sucesso: true,
         mensagem: `Assinatura ${pacote} ativada!`,
         pagamento: salvo,
-        validadeDias: pacote === 'anual' ? 365 : 30,
-        logo: LOGOS.pacote[pacote],
-        metodoLogo: LOGOS.metodo[method] || LOGOS.metodo.mpesa
+        validadeDias: pacote === 'anual' ? 365 : 30
       });
     }
 
@@ -175,11 +152,11 @@ router.post('/processar', verificarToken, async (req, res) => {
 
   } catch (error) {
     console.error('Erro pagamento:', error);
-    return res.status(500).json({ sucesso: false, mensagem: 'Erro interno.' });
+    return res.status(500).json({ sucesso: false, mensagem: 'Erro interno do servidor.' });
   }
 });
 
-// LISTAR PAGAMENTOS DO USUÁRIO
+// === LISTAR PAGAMENTOS DO USUÁRIO (SEM LOGOS) ===
 router.get("/meus", verificarToken, async (req, res) => {
   try {
     const pagamentos = await Pagamento.find({ usuarioId: req.usuario.id })
@@ -209,8 +186,6 @@ router.get("/meus", verificarToken, async (req, res) => {
         diasRestantes,
         status,
         tipo: pag.anuncioId ? 'anuncio' : 'assinatura',
-        logo: LOGOS.pacote[p] || LOGOS.pacote.anuncio,
-        metodoLogo: LOGOS.metodo[pag.metodoPagamento] || LOGOS.metodo.mpesa,
         anuncio: pag.anuncioId ? {
           id: pag.anuncioId._id,
           name: pag.anuncioId.name,
@@ -228,7 +203,7 @@ router.get("/meus", verificarToken, async (req, res) => {
   }
 });
 
-// ADMIN: LISTAR TODOS
+// === ADMIN: LISTAR TODOS (SEM LOGOS) ===
 router.get("/", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
 
@@ -261,8 +236,6 @@ router.get("/", verificarToken, async (req, res) => {
         diasRestantes,
         status,
         tipo: pag.anuncioId ? 'anuncio' : 'assinatura',
-        logo: LOGOS.pacote[p] || LOGOS.pacote.anuncio,
-        metodoLogo: LOGOS.metodo[pag.metodoPagamento] || LOGOS.metodo.mpesa,
         usuario: pag.usuarioId ? { nome: pag.usuarioId.nome, email: pag.usuarioId.email } : null,
         anuncio: pag.anuncioId ? {
           id: pag.anuncioId._id,
@@ -275,11 +248,11 @@ router.get("/", verificarToken, async (req, res) => {
 
     res.json({ sucesso: true, total: lista.length, pagamentos: lista });
   } catch (error) {
-    res.status(500).json({ sucesso: false, mensagem: "Erro admin." });
+    res.status(500).json({ sucesso: false, mensagem: "Erro ao carregar pagamentos." });
   }
 });
 
-// BUSCAR POR ID
+// === BUSCAR POR ID (SEM LOGOS) ===
 router.get("/:id", verificarToken, async (req, res) => {
   try {
     const pagamento = await Pagamento.findById(req.params.id)
@@ -290,21 +263,16 @@ router.get("/:id", verificarToken, async (req, res) => {
       return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
     }
 
-    const p = (pagamento.pacote || '').toLowerCase().trim();
     res.json({
       sucesso: true,
-      pagamento: {
-        ...pagamento.toObject(),
-        logo: LOGOS.pacote[p] || LOGOS.pacote.anuncio,
-        metodoLogo: LOGOS.metodo[pagamento.metodoPagamento] || LOGOS.metodo.mpesa
-      }
+      pagamento: pagamento.toObject()
     });
   } catch (error) {
     res.status(500).json({ sucesso: false, mensagem: "Erro ao buscar." });
   }
 });
 
-// EXCLUIR (ADMIN)
+// === EXCLUIR (ADMIN) ===
 router.delete("/:id", verificarToken, async (req, res) => {
   if (req.usuario.role !== "admin") return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
 
@@ -323,7 +291,7 @@ router.delete("/:id", verificarToken, async (req, res) => {
   }
 });
 
-// VERIFICAR ASSINATURA ATIVA
+// === VERIFICAR ASSINATURA ATIVA (SEM LOGO) ===
 router.get("/assinatura/ativa", verificarToken, async (req, res) => {
   try {
     const ultimo = await Pagamento.findOne({
@@ -332,7 +300,7 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
       status: 'aprovado'
     }).sort({ dataPagamento: -1 });
 
-    if (!ultimo) return res.json({ ativa: false, diasRestantes: 0, logo: LOGOS.pacote.free });
+    if (!ultimo) return res.json({ ativa: false, diasRestantes: 0 });
 
     const dias = ultimo.pacote === 'anual' ? 365 : 30;
     const validade = new Date(ultimo.dataPagamento);
@@ -347,8 +315,7 @@ router.get("/assinatura/ativa", verificarToken, async (req, res) => {
       ativa,
       diasRestantes: ativa ? diasRestantes : 0,
       pacote: ultimo.pacote,
-      expiraEm: validade,
-      logo: LOGOS.pacote[ultimo.pacote]
+      expiraEm: validade
     });
   } catch (error) {
     res.status(500).json({ sucesso: false, mensagem: "Erro ao verificar." });
