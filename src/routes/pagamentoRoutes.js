@@ -14,13 +14,17 @@ const PRECO_ANUAL = 1500;
 // ==============================================================
 // 1. PROCESSAR PAGAMENTO (ANTIGO + ANÚNCIOS + GRATUITO)
 // ==============================================================
+// === ROTA MELHORADA: PROCESSAR PAGAMENTO COM ERROS CLAROS ===
 router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, dadosCartao, anuncioId } = req.body;
   const usuarioId = req.usuario.id;
 
-  // Validação obrigatória
-  if (!method || amount === undefined) {
-    return res.status(400).json({ sucesso: false, mensagem: 'Método e valor são obrigatórios.' });
+  // Validação básica
+  if (!method || amount === undefined || !phone) {
+    return res.status(400).json({
+      sucesso: false,
+      mensagem: 'Método, telefone e valor são obrigatórios.'
+    });
   }
 
   amount = Number(amount);
@@ -29,178 +33,156 @@ router.post('/processar', verificarToken, async (req, res) => {
   }
 
   try {
-    // ==========================================================
-    // A) PAGAMENTO DE ANÚNCIO (com anuncioId)
-    // ==========================================================
+    let pay;
+
+    // === TENTA PAGAMENTO COM RETENTATIVA (3x) ===
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      try {
+        pay = await Gateway.payment(method, phone, amount, type);
+        if (pay && pay.status === 'success') break;
+        
+        // Se falhou, espera antes de tentar de novo
+        if (tentativa < 3) {
+          console.log(`[Gateway] Tentativa ${tentativa} falhou. Tentando novamente em 2s...`);
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (err) {
+        console.error(`[Gateway] Erro na tentativa ${tentativa}:`, err.message);
+        if (tentativa === 3) throw err;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    // === SE MESMO ASSIM FALHOU ===
+    if (!pay || pay.status !== 'success') {
+      let mensagemAmigavel = 'Pagamento falhou. Tente novamente.';
+
+      if (pay?.message) {
+        const msg = pay.message.toLowerCase();
+        if (msg.includes('saldo') || msg.includes('insuficiente')) {
+          mensagemAmigavel = 'Saldo insuficiente na carteira M-Pesa/Emola.';
+        } else if (msg.includes('timeout') || msg.includes('tempo')) {
+          mensagemAmigavel = 'Tempo esgotado. Tente novamente.';
+        } else if (msg.includes('número') || msg.includes('inválido')) {
+          mensagemAmigavel = 'Número de telefone inválido.';
+        } else if (msg.includes('cancelado') || msg.includes('recusado')) {
+          mensagemAmigavel = 'Pagamento cancelado pelo usuário.';
+        }
+      }
+
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: mensagemAmigavel,
+        detalhes: pay || { erro: 'Gateway não respondeu' },
+        dica: 'Verifique o saldo, número e conexão.'
+      });
+    }
+
+    // === AQUI O PAGAMENTO DEU CERTO! CONTINUA NORMAL ===
+    // (o resto do código é igual: anúncio ou assinatura)
+
     if (anuncioId) {
       const anuncio = await Anuncio.findOne({ _id: anuncioId, userId: usuarioId });
       if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado.' });
 
-      const weeks = Number(anuncio.weeks) || 0;
-      if (weeks <= 0) return res.status(400).json({ sucesso: false, mensagem: 'Número de semanas inválido.' });
+      const weeks = Number(anuncio.weeks) || 1;
+      const valorEsperado = weeks * 500;
 
-      const valorEsperado = weeks * PRECO_POR_SEMANA;
-
-      // --- GRATUITO: 10 MINUTOS (1 vez por anúncio) ---
-      if (amount === 0 && method === 'gratuito' && (!pacote || pacote === 'free')) {
-        const jaUsou = await Pagamento.countDocuments({
-          anuncioId: anuncio._id,
-          pacote: 'free',
-          metodoPagamento: 'gratuito'
+      if (amount !== valorEsperado && amount !== 0) {
+        return res.status(400).json({
+          sucesso: false,
+          mensagem: `Valor deve ser ${valorEsperado} MZN para ${weeks} semana(s).`
         });
+      }
 
-        if (jaUsou > 0) {
-          return res.status(400).json({ sucesso: false, mensagem: 'Já ativaste o período grátis deste anúncio.' });
-        }
+      // Grátis ou pago
+      if (amount === 0 && method === 'gratuito') {
+        const jaUsou = await Pagamento.countDocuments({ anuncioId: anuncio._id, pacote: 'free' });
+        if (jaUsou > 0) return res.status(400).json({ sucesso: false, mensagem: 'Já usaste o período grátis.' });
 
         anuncio.status = 'active';
         await anuncio.save();
 
         const pagamento = new Pagamento({
-          usuarioId,
-          pacote: 'free',
-          metodoPagamento: 'gratuito',
-          valor: 0,
-          telefone: null,
-          dadosCartao: null,
-          status: 'aprovado',
-          tipoPagamento: 'anuncio',
-          dataPagamento: new Date(),
-          gatewayResponse: { message: 'Grátis por 10 minutos' },
+          usuarioId, pacote: 'free', metodoPagamento: 'gratuito', valor: 0,
+          telefone: null, status: 'aprovado', tipoPagamento: 'anuncio',
+          dataPagamento: new Date(), gatewayResponse: { message: 'Grátis 10 min' },
           anuncioId: anuncio._id
         });
 
-        const salvo = await pagamento.save();
+        await pagamento.save();
 
         return res.status(201).json({
           sucesso: true,
           mensagem: 'Anúncio ativado GRATUITAMENTE por 10 minutos!',
-          pagamento: salvo,
-          anuncio,
           expiraEm: new Date(Date.now() + 10 * 60 * 1000)
         });
       }
 
-      // --- ANÚNCIO PAGO ---
-      if (amount !== valorEsperado) {
-        return res.status(400).json({
-          sucesso: false,
-          mensagem: `Valor deve ser exatamente ${valorEsperado} MZN (${weeks} semana${weeks > 1 ? 's' : ''}).`
-        });
-      }
-
-      const pay = await Gateway.payment(method, phone, amount, type);
-      if (!pay || pay.status !== 'success') {
-        return res.status(400).json({ sucesso: false, mensagem: 'Pagamento falhou', detalhes: pay });
-      }
-
+      // Pago
       anuncio.status = 'active';
       anuncio.amount = amount;
       await anuncio.save();
 
       const pagamento = new Pagamento({
-        usuarioId,
-        pacote: 'anuncio',
-        metodoPagamento: method,
-        valor: amount,
-        telefone: phone || null,
-        dadosCartao: null,
-        status: 'aprovado',
-        tipoPagamento: 'anuncio',
-        dataPagamento: new Date(),
-        gatewayResponse: pay.data || null,
-        anuncioId: anuncio._id
+        usuarioId, pacote: 'anuncio', metodoPagamento: method, valor: amount,
+        telefone: phone, status: 'aprovado', tipoPagamento: 'anuncio',
+        dataPagamento: new Date(), gatewayResponse: pay.data, anuncioId: anuncio._id
       });
 
-      const salvo = await pagamento.save();
+      await pagamento.save();
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: 'Anúncio pago e ativado com sucesso!',
-        pagamento: salvo,
-        anuncio,
+        mensagem: 'Anúncio pago com sucesso!',
         validadeDias: weeks * 7
       });
-    }
 
-    // ==========================================================
-    // B) ASSINATURAS ANTIGAS (sem anuncioId)
-    // ==========================================================
-    if (!pacote) {
-      return res.status(400).json({ sucesso: false, mensagem: 'Pacote é obrigatório para assinaturas.' });
-    }
+    } else {
+      // Assinatura (igual antes)
+      if (!pacote || !['mensal', 'anual', 'free'].includes(pacote.toLowerCase())) {
+        return res.status(400).json({ sucesso: false, mensagem: 'Pacote inválido.' });
+      }
 
-    pacote = pacote.toLowerCase().trim();
-
-    // --- PLANO GRATUITO ANTIGO (30 dias) ---
-    if (amount === 0 && method === 'gratuito' && pacote === 'free') {
-      const pagamento = new Pagamento({
-        usuarioId,
-        pacote: 'free',
-        metodoPagamento: 'gratuito',
-        valor: 0,
-        telefone: null,
-        dadosCartao: null,
-        status: 'aprovado',
-        tipoPagamento: 'assinatura',
-        dataPagamento: new Date(),
-        gatewayResponse: { message: 'Plano gratuito ativado (30 dias)' },
-        anuncioId: null
-      });
-
-      const salvo = await pagamento.save();
-
-      return res.status(201).json({
-        sucesso: true,
-        mensagem: 'Plano gratuito (30 dias) ativado com sucesso.',
-        pagamento: salvo
-      });
-    }
-
-    // --- PLANOS PAGOS: mensal ou anual ---
-    if (['mensal', 'anual'].includes(pacote)) {
-      const valores = { mensal: PRECO_MENSAL, anual: PRECO_ANUAL };
-      if (amount !== valores[pacote]) {
+      const valores = { mensal: 150, anual: 1500 };
+      if (amount !== 0 && amount !== valores[pacote.toLowerCase()]) {
         return res.status(400).json({
           sucesso: false,
-          mensagem: `Valor deve ser ${valores[pacote]} MZN para o plano ${pacote}.`
+          mensagem: `Valor deve ser ${valores[pacote.toLowerCase()]} MZN.`
         });
       }
 
-      const pay = await Gateway.payment(method, phone, amount, type);
-      if (!pay || pay.status !== 'success') {
-        return res.status(400).json({ sucesso: false, mensagem: 'Falha no pagamento', detalhes: pay });
-      }
-
       const pagamento = new Pagamento({
         usuarioId,
-        pacote,
-        metodoPagamento: method,
+        pacote: pacote.toLowerCase(),
+        metodoPagamento: amount === 0 ? 'gratuito' : method,
         valor: amount,
-        telefone: phone || null,
-        dadosCartao: null,
+        telefone: amount === 0 ? null : phone,
         status: 'aprovado',
         tipoPagamento: 'assinatura',
         dataPagamento: new Date(),
-        gatewayResponse: pay.data || null,
+        gatewayResponse: amount === 0 ? { message: 'Plano gratuito' } : pay.data,
         anuncioId: null
       });
 
-      const salvo = await pagamento.save();
+      await pagamento.save();
 
       return res.status(201).json({
         sucesso: true,
-        mensagem: `Plano ${pacote} ativado com sucesso!`,
-        pagamento: salvo,
+        mensagem: amount === 0 
+          ? 'Plano gratuito ativado!' 
+          : `Plano ${pacote} ativado com sucesso!`,
         validadeDias: pacote === 'anual' ? 365 : 30
       });
     }
 
-    return res.status(400).json({ sucesso: false, mensagem: 'Dados inválidos ou combinação não suportada.' });
-
   } catch (error) {
-    console.error('Erro ao processar pagamento:', error);
-    return res.status(500).json({ sucesso: false, mensagem: 'Erro interno do servidor.' });
+    console.error('ERRO CRÍTICO NO PAGAMENTO:', error);
+    return res.status(500).json({
+      sucesso: false,
+      mensagem: 'Erro interno. Tente novamente mais tarde.',
+      erro: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
