@@ -38,16 +38,26 @@ console.log('Rotas de anúncios integradas em /api/anuncios');
 app.use(express.json());
 
 // CORS
-const allowedOrigins = ['https://recuperaaqui.vercel.app', 'http://localhost:3000'];
+// CORS - CORRIGIDO
+const allowedOrigins = [
+  'https://recuperaaqui.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173' // opcional, se usar Vite
+];
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) callback(null, true);
-    else callback(new Error('Not allowed by CORS'));
+    // Permite requisições sem origin (Postman, mobile, etc)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false); // NÃO use new Error() aqui!
+    }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 200,
+  optionsSuccessStatus: 200
 }));
 
 // Criar servidor HTTP e integrar Socket.IO
