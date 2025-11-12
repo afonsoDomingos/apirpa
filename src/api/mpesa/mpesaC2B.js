@@ -53,7 +53,7 @@ class mpesaC2B {
                         'Content-Type': 'application/json',
                         'Authorization': 'Bearer ' + token,
                         'Origin': 'developer.mpesa.vm.co.mz',
-                        timeout: 30000 // 30 segundos
+                        timeout: 60000 // 60 segundos
                     },
                 }
             );
