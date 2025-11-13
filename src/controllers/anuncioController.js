@@ -1,11 +1,13 @@
+// controllers/AnuncioController.js
 const Anuncio = require('../models/Anuncio');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const { storageAnuncios } = require('../config/cloudinary');
 
+// === MULTER CONFIG ===
 const upload = multer({
   storage: storageAnuncios,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
     if (!allowed.includes(file.mimetype)) {
@@ -15,7 +17,7 @@ const upload = multer({
   }
 }).single('image');
 
-// === ADMIN MIDDLEWARE (dentro do controller) ===
+// === ADMIN MIDDLEWARE ===
 const adminOnly = (req, res, next) => {
   if (!req.usuario) return res.status(401).json({ sucesso: false, mensagem: 'Login necessário' });
   if (req.usuario.role !== 'admin') {
@@ -24,13 +26,13 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-// === 1. CRIAR ANÚNCIO (USUÁRIO) ===
+// === 1. CRIAR ANÚNCIO ===
 const criarAnuncio = (req, res) => {
   upload(req, res, async (err) => {
     if (err) return res.status(400).json({ sucesso: false, mensagem: err.message });
 
     try {
-      const { name, description, price, ctaLink, weeks = 1, imageUrl } = req.body;
+      const { name, description, price, ctaLink, phone, weeks = 1, imageUrl } = req.body;
       const image = req.file ? req.file.path : imageUrl;
 
       if (!name || !price || !ctaLink || !image || !weeks) {
@@ -39,28 +41,32 @@ const criarAnuncio = (req, res) => {
 
       const anuncio = new Anuncio({
         name: name.trim(),
-        description: description || '',
+        description: description?.trim() || '',
         price: Number(price),
         ctaLink: ctaLink.trim(),
+        phone: phone?.trim(),
         image,
         weeks: Number(weeks),
-        amount: Number(weeks) * 500,
         userId: req.usuario.id,
         status: 'pending'
       });
 
       await anuncio.save();
+
       res.status(201).json({ sucesso: true, anuncioId: anuncio._id, anuncio });
     } catch (error) {
+      console.error('Erro ao criar anúncio:', error);
       res.status(500).json({ sucesso: false, mensagem: error.message });
     }
   });
 };
 
-// === 2. MEUS ANÚNCIOS (USUÁRIO) ===
+// === 2. MEUS ANÚNCIOS ===
 const meusAnuncios = async (req, res) => {
   try {
-    const anuncios = await Anuncio.find({ userId: req.usuario.id }).sort({ createdAt: -1 });
+    const anuncios = await Anuncio.find({ userId: req.usuario.id })
+      .sort({ createdAt: -1 })
+      .select('-clickHistory -__v');
     res.json(anuncios);
   } catch (error) {
     res.status(500).json({ sucesso: false, mensagem: error.message });
@@ -70,25 +76,27 @@ const meusAnuncios = async (req, res) => {
 // === 3. ANÚNCIOS ATIVOS (PÚBLICO) ===
 const anunciosAtivos = async (req, res) => {
   try {
-    const anuncios = await Anuncio.find({ status: 'active' }).select('-userId');
+    const anuncios = await Anuncio.find({ status: 'active' })
+      .select('-userId -clickHistory -__v')
+      .sort({ featured: -1, createdAt: -1 });
     res.json(anuncios);
   } catch (error) {
     res.status(500).json({ sucesso: false, mensagem: error.message });
   }
 };
 
-// === 4. ATUALIZAR ANÚNCIO (USUÁRIO) ===
+// === 4. ATUALIZAR ANÚNCIO ===
 const atualizarAnuncio = (req, res) => {
   upload(req, res, async (err) => {
     if (err) return res.status(400).json({ sucesso: false, mensagem: err.message });
 
     try {
       const updateData = {};
-      const fields = ['name', 'description', 'price', 'ctaLink', 'weeks'];
+      const fields = ['name', 'description', 'price', 'ctaLink', 'phone', 'weeks'];
       fields.forEach(f => {
         if (req.body[f] !== undefined) updateData[f] = req.body[f];
       });
-      if (req.body.weeks) updateData.amount = Number(req.body.weeks) * 500;
+      if (req.body.weeks) updateData.weeks = Number(req.body.weeks);
       if (req.file) updateData.image = req.file.path;
       else if (req.body.imageUrl) updateData.image = req.body.imageUrl;
 
@@ -96,7 +104,7 @@ const atualizarAnuncio = (req, res) => {
         { _id: req.params.id, userId: req.usuario.id },
         updateData,
         { new: true, runValidators: true }
-      );
+      ).select('-clickHistory');
 
       if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
       res.json({ sucesso: true, anuncio });
@@ -120,13 +128,12 @@ const removerAnuncio = async (req, res) => {
   }
 };
 
-// === 6. LISTAR TODOS (ADMIN) + FILTRO POR USUÁRIO (COM POPULATE) ===
+// === 6. LISTAR TODOS (ADMIN) ===
 const listarTodosAdmin = async (req, res) => {
   try {
     const { usuario, status } = req.query;
-
     const filtro = {};
-    if (status && ['active', 'pending', 'paused'].includes(status)) {
+    if (status && ['active', 'pending', 'paused', 'expired', 'rejected'].includes(status)) {
       filtro.status = status;
     }
 
@@ -141,11 +148,10 @@ const listarTodosAdmin = async (req, res) => {
           ]
         } : {}
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .select('-clickHistory -__v');
 
     const anuncios = await query;
-
-    // Filtra apenas anúncios com usuário populado (ou seja, que passaram no match)
     const resultado = anuncios
       .filter(a => a.userId !== null)
       .map(a => ({
@@ -156,15 +162,15 @@ const listarTodosAdmin = async (req, res) => {
 
     res.json(resultado);
   } catch (error) {
-    console.error('Erro ao listar anúncios (admin):', error);
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar anúncios' });
+    console.error('Erro ao listar (admin):', error);
+    res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar' });
   }
 };
 
 // === 7. ALTERAR STATUS (ADMIN) ===
 const alterarStatusAdmin = async (req, res) => {
   const { status } = req.body;
-  if (!['active', 'paused', 'pending'].includes(status)) {
+  if (!['active', 'paused', 'pending', 'expired', 'rejected'].includes(status)) {
     return res.status(400).json({ sucesso: false, mensagem: 'Status inválido' });
   }
 
@@ -175,7 +181,7 @@ const alterarStatusAdmin = async (req, res) => {
       { new: true }
     ).populate('userId', 'nome email');
 
-    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
+    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado' });
 
     const resultado = {
       ...anuncio.toObject(),
@@ -189,58 +195,155 @@ const alterarStatusAdmin = async (req, res) => {
   }
 };
 
-// === 8. REMOVER QUALQUER ANÚNCIO (ADMIN) ===
+// === 8. REMOVER QUALQUER (ADMIN) ===
 const removerQualquerAdmin = async (req, res) => {
   try {
     const anuncio = await Anuncio.findByIdAndDelete(req.params.id);
-    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
-    res.json({ sucesso: true, mensagem: 'Anúncio removido com sucesso' });
+    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado' });
+    res.json({ sucesso: true, mensagem: 'Removido com sucesso' });
   } catch (error) {
     res.status(500).json({ sucesso: false, mensagem: error.message });
   }
 };
 
-// === 9. REGISTRAR CLIQUE (PÚBLICO) ===
-const registrarClique = async (req, res) => {
+// === 9. REGISTRAR VISUALIZAÇÃO (VIEW) ===
+const registrarView = async (req, res) => {
   const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ sucesso: false, mensagem: 'ID inválido' });
+  }
+
   try {
     const anuncio = await Anuncio.findByIdAndUpdate(
       id,
-      { $inc: { clicks: 1 } },
+      { $inc: { views: 1 } },
       { new: true }
-    ).select('clicks');
+    ).select('views status');
 
-    if (!anuncio) {
-      return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
+    if (!anuncio || anuncio.status !== 'active') {
+      return res.status(404).json({ sucesso: false });
     }
 
-    res.json({ sucesso: true, clicks: anuncio.clicks });
+    req.io?.emit('anuncio:view', { anuncioId: id, views: anuncio.views });
+
+    res.json({ sucesso: true, views: anuncio.views });
   } catch (error) {
-    res.status(500).json({ sucesso: false, mensagem: error.message });
+    console.error('Erro view:', error);
+    res.status(500).json({ sucesso: false, mensagem: 'Erro interno' });
   }
 };
 
-// === 10. ESTATÍSTICAS DETALHADAS (ADMIN) ===
+// === 10. REGISTRAR CLIQUE (COM HISTÓRICO DIÁRIO) ===
+const registrarClique = async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ sucesso: false, mensagem: 'ID inválido' });
+  }
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  try {
+    const anuncio = await Anuncio.findOneAndUpdate(
+      { _id: id, status: 'active' },
+      [
+        {
+          $set: {
+            clicks: { $add: ["$clicks", 1] },
+            clickHistory: {
+              $cond: {
+                if: { $in: [hoje, "$clickHistory.date"] },
+                then: {
+                  $map: {
+                    input: "$clickHistory",
+                    in: {
+                      $cond: [
+                        { $eq: ["$$this.date", hoje] },
+                        { date: "$$this.date", clicks: { $add: ["$$this.clicks", 1] } },
+                        "$$this"
+                      ]
+                    }
+                  }
+                },
+                else: {
+                  $concatArrays: [
+                    "$clickHistory",
+                    [{ date: hoje, clicks: 1 }]
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          $set: {
+            clickHistory: { $slice: ["$clickHistory", -30] }
+          }
+        }
+      ],
+      { new: true }
+    ).select('clicks clickHistory status');
+
+    if (!anuncio) {
+      return res.status(404).json({ sucesso: false });
+    }
+
+    const hojeCliques = anuncio.clickHistory.find(h =>
+      h.date.toISOString().split('T')[0] === hoje.toISOString().split('T')[0]
+    )?.clicks || 1;
+
+    req.io?.emit('anuncio:click', {
+      anuncioId: id,
+      clicks: anuncio.clicks,
+      todayClicks: hojeCliques
+    });
+
+    res.json({ sucesso: true, clicks: anuncio.clicks });
+  } catch (error) {
+    console.error('Erro clique:', error);
+    res.status(500).json({ sucesso: false, mensagem: 'Erro interno' });
+  }
+};
+
+// === 11. ESTATÍSTICAS DETALHADAS (ADMIN) ===
 const estatisticasAdmin = async (req, res) => {
   try {
-    const anuncio = await Anuncio.findById(req.params.id);
-    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Anúncio não encontrado' });
+    const anuncio = await Anuncio.findById(req.params.id)
+      .populate('userId', 'nome email');
+
+    if (!anuncio) return res.status(404).json({ sucesso: false, mensagem: 'Não encontrado' });
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const seteDiasAtras = new Date(hoje.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+    const historyMap = new Map(
+      anuncio.clickHistory.map(h => [h.date.toISOString().split('T')[0], h.clicks])
+    );
+
+    const completo = [];
+    for (let d = new Date(seteDiasAtras); d <= hoje; d.setDate(d.getDate() + 1)) {
+      const dataStr = d.toISOString().split('T')[0];
+      completo.push({
+        date: dataStr,
+        clicks: historyMap.get(dataStr) || 0
+      });
+    }
 
     res.json({
       views: anuncio.views || 0,
       clicks: anuncio.clicks || 0,
-      impressions: (anuncio.views || 0) + (anuncio.clicks || 0) * 2,
+      impressions: (anuncio.views || 0) + (anuncio.clicks || 0),
       duration: anuncio.weeks * 7,
-      statsHistory: Array.from({ length: 7 }, (_, i) => ({
-        date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0],
-        clicks: Math.floor(Math.random() * 15)
-      })).reverse()
+      statsHistory: completo
     });
   } catch (error) {
+    console.error('Erro stats:', error);
     res.status(500).json({ sucesso: false, mensagem: error.message });
   }
 };
 
+// === EXPORTAR TUDO ===
 module.exports = {
   criarAnuncio,
   meusAnuncios,
@@ -251,7 +354,7 @@ module.exports = {
   listarTodosAdmin,
   alterarStatusAdmin,
   removerQualquerAdmin,
+  registrarView,
   registrarClique,
   estatisticasAdmin
 };
-
