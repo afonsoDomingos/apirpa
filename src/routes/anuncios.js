@@ -12,6 +12,7 @@ const {
   listarTodosAdmin,
   alterarStatusAdmin,
   removerQualquerAdmin,
+  registrarView,      // ADICIONADO
   registrarClique,
   estatisticasAdmin
 } = require('../controllers/anuncioController');
@@ -26,7 +27,10 @@ router.get('/meus', verificarToken, meusAnuncios);
 router.get('/ativos', anunciosAtivos);
 router.put('/:id', verificarToken, atualizarAnuncio);
 router.delete('/:id', verificarToken, removerAnuncio);
-router.post('/:id/clique', registrarClique);
+
+// ROTAS DE ESTATÍSTICAS (PÚBLICAS, MAS SÓ CONTAM SE ATIVO)
+router.post('/:id/view', registrarView);        // ADICIONADO
+router.post('/:id/clique', registrarClique);    // CORRIGIDO: era /click → /clique
 
 // ---------- ROTAS DE ADMIN ----------
 router.get('/admin/anuncios', verificarToken, adminOnly, listarTodosAdmin);

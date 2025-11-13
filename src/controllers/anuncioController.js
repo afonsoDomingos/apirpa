@@ -305,7 +305,7 @@ const registrarClique = async (req, res) => {
   }
 };
 
-// === 11. ESTATÍSTICAS DETALHADAS (ADMIN) ===
+// === 11. ESTATÍSTICAS DETALHADAS (ADMIN) - 7 DIAS COMPLETOS ===
 const estatisticasAdmin = async (req, res) => {
   try {
     const anuncio = await Anuncio.findById(req.params.id)
@@ -318,14 +318,17 @@ const estatisticasAdmin = async (req, res) => {
     const seteDiasAtras = new Date(hoje.getTime() - 6 * 24 * 60 * 60 * 1000);
 
     const historyMap = new Map(
-      anuncio.clickHistory.map(h => [h.date.toISOString().split('T')[0], h.clicks])
+      (anuncio.clickHistory || []).map(h => [
+        h.date.toISOString().split('T')[0],
+        h.clicks
+      ])
     );
 
     const completo = [];
     for (let d = new Date(seteDiasAtras); d <= hoje; d.setDate(d.getDate() + 1)) {
       const dataStr = d.toISOString().split('T')[0];
       completo.push({
-        date: dataStr,
+        date: new Date(dataStr),
         clicks: historyMap.get(dataStr) || 0
       });
     }
@@ -354,7 +357,7 @@ module.exports = {
   listarTodosAdmin,
   alterarStatusAdmin,
   removerQualquerAdmin,
-  registrarView,
+  registrarView,      // EXPORTADO
   registrarClique,
   estatisticasAdmin
 };
