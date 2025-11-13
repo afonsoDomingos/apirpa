@@ -346,6 +346,7 @@ const estatisticasAdmin = async (req, res) => {
   }
 };
 
+
 // === EXPORTAR TUDO ===
 module.exports = {
   criarAnuncio,
@@ -357,7 +358,7 @@ module.exports = {
   listarTodosAdmin,
   alterarStatusAdmin,
   removerQualquerAdmin,
-  registrarView,      // EXPORTADO
+  registrarView,     
   registrarClique,
   estatisticasAdmin
 };
