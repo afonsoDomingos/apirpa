@@ -20,6 +20,7 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -93,7 +94,8 @@ app.use('/api/noticias', noticiasRouter);
 app.use('/api/posts', postsRoutes);
 app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
-app.use('/api/anuncios', anunciosRouter);
+
+app.use('/api', anunciosRouter);  // <--- CORRETO
 
 app.use('/uploads', express.static('uploads'));
 

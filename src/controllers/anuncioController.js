@@ -254,3 +254,4 @@ module.exports = {
   registrarClique,
   estatisticasAdmin
 };
+
