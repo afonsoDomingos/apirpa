@@ -12,30 +12,34 @@ const {
   listarTodosAdmin,
   alterarStatusAdmin,
   removerQualquerAdmin,
-  registrarView,      // ADICIONADO
+  registrarView,
   registrarClique,
   estatisticasAdmin
 } = require('../controllers/anuncioController');
 
 const verificarToken = require('../middleware/authMiddleware');
 
-console.log('Rotas de anúncios carregadas');
+console.log('Rotas de anúncios carregadas em /api/anuncios');
 
-// ---------- ROTAS DE USUÁRIO ----------
-router.post('/', verificarToken, criarAnuncio);
-router.get('/meus', verificarToken, meusAnuncios);
+// === ROTAS PÚBLICAS ===
 router.get('/ativos', anunciosAtivos);
-router.put('/:id', verificarToken, atualizarAnuncio);
-router.delete('/:id', verificarToken, removerAnuncio);
+router.post('/:id/view', registrarView);
+router.post('/:id/clique', registrarClique);
 
-// ROTAS DE ESTATÍSTICAS (PÚBLICAS, MAS SÓ CONTAM SE ATIVO)
-router.post('/:id/view', registrarView);        // ADICIONADO
-router.post('/:id/clique', registrarClique);    // CORRIGIDO: era /click → /clique
+// === ROTAS AUTENTICADAS (USUÁRIO LOGADO) ===
+router.use(verificarToken);
 
-// ---------- ROTAS DE ADMIN ----------
-router.get('/admin/anuncios', verificarToken, adminOnly, listarTodosAdmin);
-router.patch('/admin/anuncios/:id/status', verificarToken, adminOnly, alterarStatusAdmin);
-router.delete('/admin/anuncios/:id', verificarToken, adminOnly, removerQualquerAdmin);
-router.get('/admin/anuncios/:id/stats', verificarToken, adminOnly, estatisticasAdmin);
+router.post('/', criarAnuncio);           // POST /api/anuncios
+router.get('/meus', meusAnuncios);         // GET  /api/anuncios/meus
+router.put('/:id', atualizarAnuncio);     // PUT  /api/anuncios/123
+router.delete('/:id', removerAnuncio);    // DELETE /api/anuncios/123
+
+// === ROTAS ADMIN ===
+router.use(adminOnly);
+
+router.get('/admin', listarTodosAdmin);                    // GET    /api/anuncios/admin
+router.patch('/admin/:id/status', alterarStatusAdmin);     // PATCH  /api/anuncios/admin/123/status
+router.delete('/admin/:id', removerQualquerAdmin);         // DELETE /api/anuncios/admin/123
+router.get('/admin/:id/stats', estatisticasAdmin);         // GET    /api/anuncios/admin/123/stats
 
 module.exports = router;
