@@ -347,7 +347,7 @@ const estatisticasAdmin = async (req, res) => {
 };
 
 
-// === EXPORTAR TUDO ===
+// === EXPORTAR TUDO. ===
 module.exports = {
   criarAnuncio,
   meusAnuncios,
