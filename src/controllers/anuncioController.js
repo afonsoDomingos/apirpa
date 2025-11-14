@@ -35,7 +35,8 @@ const criarAnuncio = (req, res) => {
       const { name, description, price, ctaLink, phone, weeks = 1, imageUrl } = req.body;
       const image = req.file ? req.file.path : imageUrl;
 
-      if (!name || !price || !ctaLink || !image || !weeks) {
+      // REMOVIDO !weeks → será sobrescrito no pagamento
+      if (!name || !price || !ctaLink || !image) {
         return res.status(400).json({ sucesso: false, mensagem: 'Campos obrigatórios faltando' });
       }
 
@@ -46,7 +47,7 @@ const criarAnuncio = (req, res) => {
         ctaLink: ctaLink.trim(),
         phone: phone?.trim(),
         image,
-        weeks: Number(weeks),
+        weeks: Number(weeks) || 1,  // sempre tem valor
         userId: req.usuario.id,
         status: 'pending'
       });
