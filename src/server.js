@@ -20,6 +20,9 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 
+// NOVO: Import do Conversions API (server-side)
+
+const { sendConversionEvent } = require('./services/metaConversions'); // ← CORRETA
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -34,25 +37,24 @@ console.log(`API Key: ${apiKey ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log(`Public Key: ${publicKey ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log(`M-Pesa C2B URL: ${mpesaC2bUrl ? 'Carregada' : 'NÃO CARREGADA'}`);
 console.log('Rotas de anúncios integradas em /api/anuncios');
+console.log('Conversions API (server-side) carregada e pronta!');
 
 // Middlewares
 app.use(express.json());
 
 // CORS
-// CORS - CORRIGIDO
 const allowedOrigins = [
   'https://recuperaaqui.vercel.app',
   'http://localhost:3000',
-  'http://localhost:5173' // opcional, se usar Vite
+  'http://localhost:5173'
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permite requisições sem origin (Postman, mobile, etc)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, false); // NÃO use new Error() aqui!
+      callback(null, false);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -72,15 +74,35 @@ const io = new Server(server, {
 
 // Configuração do Socket.IO
 io.on('connection', (socket) => {
-  console.log('🟢 Novo cliente conectado:', socket.id);
-
+  console.log('Novo cliente conectado:', socket.id);
   socket.on('disconnect', () => {
-    console.log('🔴 Cliente desconectado:', socket.id);
+    console.log('Cliente desconectado:', socket.id);
   });
 });
 
-// Disponibilizar io para as rotas
 app.set('io', io);
+
+// === ROTA PÚBLICA PARA O FRONTEND ENVIAR EVENTOS CAPI ===
+app.post('/api/facebook/conversion', async (req, res) => {
+  try {
+    const { event_name, eventData = {}, userData = {}, event_id } = req.body;
+
+    if (!event_id) {
+      return res.status(400).json({ error: 'event_id é obrigatório' });
+    }
+
+    await sendConversionEvent(event_name, {
+      ...eventData,
+      ip: req.ip || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent'] || 'unknown'
+    }, userData, event_id);
+
+    res.json({ success: true, message: 'Evento CAPI enviado com sucesso' });
+  } catch (error) {
+    console.error('Erro na rota /api/facebook/conversion:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Rotas principais
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
@@ -94,8 +116,7 @@ app.use('/api/noticias', noticiasRouter);
 app.use('/api/posts', postsRoutes);
 app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
-
-app.use('/api', anunciosRouter);  // <--- CORRETO
+app.use('/api/anuncios', anunciosRouter);
 
 app.use('/uploads', express.static('uploads'));
 
@@ -113,13 +134,14 @@ app.get('/api/documentos/count', async (req, res) => {
 // Conectar ao MongoDB e iniciar servidor
 connectDB()
   .then(() => {
-    console.log('✅ Conectado ao MongoDB com sucesso!');
+    console.log('Conectado ao MongoDB com sucesso!');
     server.listen(port, () => {
-      console.log(`🚀 Servidor rodando na porta ${port}`);
+      console.log(`Servidor rodando na porta ${port}`);
+      console.log(`Rota CAPI disponível: POST /api/facebook/conversion`);
       console.log('Aguardando requisições...');
     });
   })
   .catch(err => {
-    console.error('❌ Erro ao conectar ao banco de dados:', err);
+    console.error('Erro ao conectar ao banco de dados:', err);
     process.exit(1);
   });
