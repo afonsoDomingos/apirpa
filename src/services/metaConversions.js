@@ -2,59 +2,90 @@
 const crypto = require('crypto');
 const axios = require('axios');
 
+// ===============================
+// CONFIGURAÇÃO DO PIXEL
+// ===============================
 const PIXEL_ID = '1265895278678340';
-const ACCESS_TOKEN = 'EAAV724cEmmgBP6uVCd8mzjSIE6MaZA9y9ZCIMZCpU4KOhikUtCBZAv1ZCq5GG7Dl1B4jSZBd1B1JhDRd9iapnzALkV5t8Trb8LZAwIvKCrJ8cp4wV3dzqOEqYaRUMZAVFiBzJcbk1VKusiZAMLqzocubjWoZAex310c7rWwqq8HHWzT70IuyaBQnlxLw4f66UtWkPx3wZDZD'; // ← só isto que falta preencher!
 
+// ⚠️ IMPORTANTE:
+// Coloque teu token real aqui.
+// Nunca deixar em apps públicos.
+const ACCESS_TOKEN = 'EAAV724cEmmgBP6uVCd8mzjSIE6MaZA9y9ZCIMZCpU4KOhikUtCBZAv1ZCq5GG7Dl1B4jSZBd1B1JhDRd9iapnzALkV5t8Trb8LZAwIvKCrJ8cp4wV3dzqOEqYaRUMZAVFiBzJcbk1VKusiZAMLqzocubjWoZAex310c7rWwqq8HHWzT70IuyaBQnlxLw4f66UtWkPx3wZDZD';
+
+console.log("🔵 Meta CAPI carregado (metaConversions.js)");
+
+// ===============================
+// FUNÇÃO DE HASH — REQUERIDO
+// ===============================
 const hash = (data) => {
   if (!data) return null;
   const cleaned = data.toString().trim().toLowerCase();
   return crypto.createHash('sha256').update(cleaned).digest('hex');
 };
 
+// ===============================
+// FUNÇÃO PRINCIPAL DE ENVIO CAPI
+// ===============================
 const sendConversionEvent = async (eventName, eventData = {}, userData = {}, eventId) => {
-  // Validação básica
+  
   if (!eventId) {
-    console.warn('CAPI: eventId ausente — evento não enviado (evita duplicação)');
+    console.warn("⚠️ CAPI BLOQ → eventId ausente (necessário para deduplicação)");
     return;
   }
 
+  console.log(`📤 Preparando evento CAPI: "${eventName}" (ID: ${eventId})`);
+
+  // ===============================
+  // MONTA O EVENTO FACEBOOK CAPI
+  // ===============================
   const event = {
     event_name: eventName,
     event_time: Math.floor(Date.now() / 1000),
-    event_id: eventId,                    // ← OBRIGATÓRIO para deduplicação com browser
+    event_id: eventId,
+    action_source: 'website',
+
     user_data: {
       em: userData.email ? [hash(userData.email)] : [],
       ph: userData.phone ? [hash(userData.phone)] : [],
-      client_ip_address: eventData.ip,
-      client_user_agent: eventData.userAgent,
+      client_ip_address: eventData.ip || null,
+      client_user_agent: eventData.userAgent || null,
       fbp: userData.fbp || null,
-      fbc: userData.fbc || null,
+      fbc: userData.fbc || null
     },
+
     custom_data: {
       value: eventData.value || 0,
       currency: 'MZN',
-      predicted_ltv: eventData.predicted_ltv || null,
-      content_ids: eventData.content_ids || null,
       content_name: eventData.content_name || null,
+      content_ids: eventData.content_ids || null,
+      predicted_ltv: eventData.predicted_ltv || null
     },
-    event_source_url: eventData.url || 'https://recuperaaquivercel.app',
-    action_source: 'website',
-    // Estes dois campos são os que mais aumentam o match rate em 2025:
+
+    event_source_url: eventData.url || 'https://recuperaaqui.vercel.app',
+
+    // Melhoram match rate 2025
     data_processing_options: [],
     opt_out: false
   };
 
+  // ===============================
+  // ENVIO PARA O FACEBOOK
+  // ===============================
   try {
+    console.log("⏳ Enviando evento para Meta...");
+
     const response = await axios.post(
       `https://graph.facebook.com/v20.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`,
-      { data: [event] },  // ← formato correto (data: [])
+      { data: [event] },
       { timeout: 8000 }
     );
 
-    console.log('CAPI →', eventName, eventData.value ? `${eventData.value} MZN` : '', 'OK');
+    console.log(`✅ CAPI ENVIADO: ${eventName} (${eventData.value || 0} MZN)`);
     return response.data;
+
   } catch (error) {
-    console.error('Erro CAPI:', error.response?.data || error.message);
+    console.error("❌ ERRO AO ENVIAR CAPI:");
+    console.error(error.response?.data || error.message);
   }
 };
 

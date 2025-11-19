@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const Documento = require('./models/documentoModel');
 
-// Importar rotas
+// Rotas
 const chatbotRoutes = require('./routes/chatbot');
 const documentoRoutes = require('./routes/documentoRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -20,51 +20,62 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 
-// NOVO: Import do Conversions API (server-side)
-
-const { sendConversionEvent } = require('./services/metaConversions'); // ← CORRETA
+// Meta CAPI
+const { sendConversionEvent } = require('./services/metaConversions');
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Variáveis de ambiente
-const apiKey = process.env.MPESA_API_KEY;
-const publicKey = process.env.MPESA_PUBLIC_KEY?.replace(/\\n/g, '\n');
-const mpesaC2bUrl = process.env.MPESA_C2B_URL;
+/* ===============================
+    VARIÁVEIS DE AMBIENTE
+=================================*/
+console.log("\n===============================");
+console.log("🔧 VERIFICAÇÃO DAS VARIÁVEIS");
+console.log("===============================\n");
 
-console.log("Variáveis de ambiente carregadas:");
-console.log(`API Key: ${apiKey ? 'Carregada' : 'NÃO CARREGADA'}`);
-console.log(`Public Key: ${publicKey ? 'Carregada' : 'NÃO CARREGADA'}`);
-console.log(`M-Pesa C2B URL: ${mpesaC2bUrl ? 'Carregada' : 'NÃO CARREGADA'}`);
-console.log('Rotas de anúncios integradas em /api/anuncios');
-console.log('Conversions API (server-side) carregada e pronta!');
+console.log(`➡️ MPESA_API_KEY: ${process.env.MPESA_API_KEY ? "✔ OK" : "❌ NÃO CARREGADA"}`);
+console.log(`➡️ MPESA_PUBLIC_KEY: ${process.env.MPESA_PUBLIC_KEY ? "✔ OK" : "❌ NÃO CARREGADA"}`);
+console.log(`➡️ MPESA_C2B_URL: ${process.env.MPESA_C2B_URL ? "✔ OK" : "❌ NÃO CARREGADA"}`);
+console.log("🔵 Meta CAPI inicializado.\n");
 
-// Middlewares
+/* ===============================
+             MIDDLEWARES
+=================================*/
 app.use(express.json());
 
-// CORS
+/* ===============================
+                CORS
+=================================*/
+console.log("🌐 Configurando CORS...");
+
 const allowedOrigins = [
   'https://recuperaaqui.vercel.app',
   'http://localhost:3000',
-  'http://localhost:5173'
+  'http://localhost:5173',
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
+      console.log(`🟢 CORS permitido: ${origin || "sem origem (mobile/postman)"}`);
       callback(null, true);
     } else {
+      console.log(`⛔ CORS BLOQUEADO: ${origin}`);
       callback(null, false);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 200
 }));
 
-// Criar servidor HTTP e integrar Socket.IO
+/* ===============================
+             SOCKET.IO
+=================================*/
+console.log("🔌 Iniciando Socket.IO...");
+
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -72,40 +83,58 @@ const io = new Server(server, {
   },
 });
 
-// Configuração do Socket.IO
 io.on('connection', (socket) => {
-  console.log('Novo cliente conectado:', socket.id);
+  console.log(`🟢 Socket conectado: ${socket.id}`);
+
   socket.on('disconnect', () => {
-    console.log('Cliente desconectado:', socket.id);
+    console.log(`🔴 Socket desconectado: ${socket.id}`);
   });
 });
 
 app.set('io', io);
 
-// === ROTA PÚBLICA PARA O FRONTEND ENVIAR EVENTOS CAPI ===
+/* ===============================
+    ROTA: FACEBOOK CONVERSIONS API
+=================================*/
 app.post('/api/facebook/conversion', async (req, res) => {
+  console.log("\n📩 Recebendo evento do frontend para CAPI...");
+
   try {
     const { event_name, eventData = {}, userData = {}, event_id } = req.body;
 
     if (!event_id) {
+      console.log("⚠️ ERRO: event_id não foi enviado!");
       return res.status(400).json({ error: 'event_id é obrigatório' });
     }
 
-    await sendConversionEvent(event_name, {
-      ...eventData,
-      ip: req.ip || req.connection.remoteAddress,
-      userAgent: req.headers['user-agent'] || 'unknown'
-    }, userData, event_id);
+    console.log(`📤 Enviando evento para Meta: ${event_name} | ID: ${event_id}`);
 
-    res.json({ success: true, message: 'Evento CAPI enviado com sucesso' });
+    await sendConversionEvent(
+      event_name,
+      {
+        ...eventData,
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.headers['user-agent']
+      },
+      userData,
+      event_id
+    );
+
+    console.log("✅ Evento CAPI enviado com sucesso!");
+    res.json({ success: true });
   } catch (error) {
-    console.error('Erro na rota /api/facebook/conversion:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("❌ ERRO NA ROTA CAPI:", error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Rotas principais
+/* ===============================
+                ROTAS
+=================================*/
+console.log("\n🛣️ Registrando rotas da API...");
+
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
+
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api', documentoRoutes);
 app.use('/api/auth', authRoutes);
@@ -120,28 +149,38 @@ app.use('/api/anuncios', anunciosRouter);
 
 app.use('/uploads', express.static('uploads'));
 
-// Contador de documentos
+/* ===============================
+   CONTADOR DE DOCUMENTOS
+=================================*/
 app.get('/api/documentos/count', async (req, res) => {
+  console.log("📊 Contando documentos com origem 'reportado'...");
   try {
     const count = await Documento.countDocuments({ origem: 'reportado' });
     res.json({ count });
   } catch (error) {
-    console.error('Erro ao contar documentos', error);
+    console.error("❌ Erro ao contar documentos:", error);
     res.status(500).json({ message: 'Erro ao contar documentos' });
   }
 });
 
-// Conectar ao MongoDB e iniciar servidor
+/* ===============================
+   INICIAR API + MONGO
+=================================*/
+console.log("\n🔗 Conectando ao MongoDB...");
+
 connectDB()
   .then(() => {
-    console.log('Conectado ao MongoDB com sucesso!');
+    console.log("✅ MongoDB conectado com sucesso!");
     server.listen(port, () => {
-      console.log(`Servidor rodando na porta ${port}`);
-      console.log(`Rota CAPI disponível: POST /api/facebook/conversion`);
-      console.log('Aguardando requisições...');
+      console.log("\n====================================");
+      console.log(`🚀 Servidor rodando na porta ${port}`);
+      console.log("📡 Socket.IO ativo");
+      console.log("📍 CAPI: POST /api/facebook/conversion");
+      console.log("🟢 API pronta para receber requisições");
+      console.log("====================================\n");
     });
   })
   .catch(err => {
-    console.error('Erro ao conectar ao banco de dados:', err);
+    console.error("❌ ERRO AO CONECTAR NO MONGO:", err);
     process.exit(1);
   });
