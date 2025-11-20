@@ -35,7 +35,6 @@ const criarAnuncio = (req, res) => {
       const { name, description, price, ctaLink, phone, weeks = 1, imageUrl } = req.body;
       const image = req.file ? req.file.path : imageUrl;
 
-      // REMOVIDO !weeks → será sobrescrito no pagamento
       if (!name || !price || !ctaLink || !image) {
         return res.status(400).json({ sucesso: false, mensagem: 'Campos obrigatórios faltando' });
       }
@@ -47,7 +46,7 @@ const criarAnuncio = (req, res) => {
         ctaLink: ctaLink.trim(),
         phone: phone?.trim(),
         image,
-        weeks: Number(weeks) || 1,  // sempre tem valor
+        weeks: Number(weeks) || 1,
         userId: req.usuario.id,
         status: 'pending'
       });
@@ -234,9 +233,10 @@ const registrarView = async (req, res) => {
   }
 };
 
-// === 10. REGISTRAR CLIQUE (COM HISTÓRICO DIÁRIO) ===
+// === 10. REGISTRAR CLIQUE - VERSÃO CORRIGIDA E CONFIÁVEL ===
 const registrarClique = async (req, res) => {
   const { id } = req.params;
+
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ sucesso: false, mensagem: 'ID inválido' });
   }
@@ -245,68 +245,58 @@ const registrarClique = async (req, res) => {
   hoje.setHours(0, 0, 0, 0);
 
   try {
+    // 1. Incrementa o contador total
     const anuncio = await Anuncio.findOneAndUpdate(
       { _id: id, status: 'active' },
-      [
-        {
-          $set: {
-            clicks: { $add: ["$clicks", 1] },
-            clickHistory: {
-              $cond: {
-                if: { $in: [hoje, "$clickHistory.date"] },
-                then: {
-                  $map: {
-                    input: "$clickHistory",
-                    in: {
-                      $cond: [
-                        { $eq: ["$$this.date", hoje] },
-                        { date: "$$this.date", clicks: { $add: ["$$this.clicks", 1] } },
-                        "$$this"
-                      ]
-                    }
-                  }
-                },
-                else: {
-                  $concatArrays: [
-                    "$clickHistory",
-                    [{ date: hoje, clicks: 1 }]
-                  ]
-                }
-              }
-            }
-          }
-        },
-        {
-          $set: {
-            clickHistory: { $slice: ["$clickHistory", -30] }
-          }
-        }
-      ],
+      { $inc: { clicks: 1 } },
       { new: true }
-    ).select('clicks clickHistory status');
+    );
 
     if (!anuncio) {
       return res.status(404).json({ sucesso: false });
     }
 
-    const hojeCliques = anuncio.clickHistory.find(h =>
-      h.date.toISOString().split('T')[0] === hoje.toISOString().split('T')[0]
-    )?.clicks || 1;
+    // 2. Atualiza ou cria entrada do dia no histórico
+    const updated = await Anuncio.findOneAndUpdate(
+      { _id: id, "clickHistory.date": hoje },
+      { $inc: { "clickHistory.$.clicks": 1 } },
+      { new: true }
+    );
 
+    if (!updated) {
+      // Não existia entrada para hoje → cria
+      await Anuncio.findByIdAndUpdate(id, {
+        $push: {
+          clickHistory: {
+            $each: [{ date: hoje, clicks: 1 }],
+            $slice: -30  // mantém apenas os últimos 30 dias
+          }
+        }
+      });
+    }
+
+    // Busca o valor final para emitir no socket
+    const finalAnuncio = await Anuncio.findById(id).select('clicks clickHistory');
+
+    const hojeCliques = finalAnuncio.clickHistory
+      .find(h => h.date.toISOString().split('T')[0] === hoje.toISOString().split('T')[0])
+      ?.clicks || 1;
+
+    // Emite atualização em tempo real
     req.io?.emit('anuncio:click', {
       anuncioId: id,
-      clicks: anuncio.clicks,
+      clicks: finalAnuncio.clicks,
       todayClicks: hojeCliques
     });
 
-    res.json({ sucesso: true, clicks: anuncio.clicks });
+    res.json({ sucesso: true, clicks: finalAnuncio.clicks });
   } catch (error) {
-    console.error('Erro clique:', error);
+    console.error('Erro ao registrar clique:', error);
     res.status(500).json({ sucesso: false, mensagem: 'Erro interno' });
   }
 };
 
-// === 11. ESTATÍSTICAS DETALHADAS (ADMIN) - 7 DIAS COMPLETOS ===
+// === 11. ESTATÍSTICAS DETALHADAS (ADMIN) ===
 const estatisticasAdmin = async (req, res) => {
   try {
     const anuncio = await Anuncio.findById(req.params.id)
@@ -347,8 +337,7 @@ const estatisticasAdmin = async (req, res) => {
   }
 };
 
-
-// === EXPORTAR TUDO. ===
+// === EXPORTAR ===
 module.exports = {
   criarAnuncio,
   meusAnuncios,
@@ -359,7 +348,7 @@ module.exports = {
   listarTodosAdmin,
   alterarStatusAdmin,
   removerQualquerAdmin,
-  registrarView,     
+  registrarView,
   registrarClique,
   estatisticasAdmin
 };
