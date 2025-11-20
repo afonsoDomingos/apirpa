@@ -337,6 +337,63 @@ const estatisticasAdmin = async (req, res) => {
   }
 };
 
+
+// === 12. ESTATÍSTICAS PARA O DONO DO ANÚNCIO ===
+const estatisticasDoDono = async (req, res) => {
+  try {
+    const anuncio = await Anuncio.findOne({
+      _id: req.params.id,
+      userId: req.usuario.id  // ← garante que só a pessoa é dona
+    });
+
+    if (!anuncio) {
+      return res.status(404).json({ 
+        sucesso: false, 
+        mensagem: 'Anúncio não encontrado ou você não tem permissão' 
+      });
+    }
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const seteDiasAtras = new Date(hoje.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+    // Preenche os últimos 7 dias (mesmo que tenha buracos)
+    const historyMap = new Map(
+      (anuncio.clickHistory || []).map(h => [
+        h.date.toISOString().split('T')[0],
+        h.clicks
+      ])
+    );
+
+    const ultimoSeteDias = [];
+    for (let d = new Date(seteDiasAtras); d <= hoje; d.setDate(d.getDate() + 1)) {
+      const dataStr = d.toISOString().split('T')[0];
+      ultimoSeteDias.push({
+        date: dataStr,
+        clicks: historyMap.get(dataStr) || 0
+      });
+    }
+
+    res.json({
+      sucesso: true,
+      stats: {
+        views: anuncio.views || 0,
+        clicks: anuncio.clicks || 0,
+        ctr: anuncio.views > 0 ? ((anuncio.clicks / anuncio.views) * 100).toFixed(2) + '%' : '0%',
+        hoje: ultimoSeteDias[ultimoSeteDias.length - 1]?.clicks || 0,
+        ultimoSeteDias
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao carregar stats do dono:', error);
+    res.status(500).json({ sucesso: false, mensagem: 'Erro interno' });
+  }
+};
+
+
+
+
 // === EXPORTAR ===
 module.exports = {
   criarAnuncio,
@@ -350,5 +407,6 @@ module.exports = {
   removerQualquerAdmin,
   registrarView,
   registrarClique,
-  estatisticasAdmin
+  estatisticasAdmin,
+  estatisticasDoDono
 };

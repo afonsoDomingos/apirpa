@@ -14,7 +14,8 @@ const {
   removerQualquerAdmin,
   registrarView,
   registrarClique,
-  estatisticasAdmin
+  estatisticasAdmin,
+  estatisticasDoDono
 } = require('../controllers/anuncioController');
 
 const verificarToken = require('../middleware/authMiddleware');
@@ -33,6 +34,9 @@ router.post('/', criarAnuncio);           // POST /api/anuncios
 router.get('/meus', meusAnuncios);         // GET  /api/anuncios/meus
 router.put('/:id', atualizarAnuncio);     // PUT  /api/anuncios/123
 router.delete('/:id', removerAnuncio);    // DELETE /api/anuncios/123
+
+// NOVA ROTA: estatísticas do dono
+router.get('/:id/stats', estatisticasDoDono);   // ← AQUI! GET /api/anuncios/123/stats
 
 // === ROTAS ADMIN ===
 router.use(adminOnly);
