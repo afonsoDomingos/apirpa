@@ -20,6 +20,8 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 
+const webhookMpesa = require('./routes/webhookMpesa');
+
 // Meta CAPI
 const { sendConversionEvent } = require('./services/metaConversions');
 
@@ -133,6 +135,9 @@ app.post('/api/facebook/conversion', async (req, res) => {
 =================================*/
 console.log("\n🛣️ Registrando rotas da API...");
 
+
+
+
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
 app.use('/api/chatbot', chatbotRoutes);
@@ -149,6 +154,8 @@ app.use('/api/anuncios', anunciosRouter);
 
 app.use('/uploads', express.static('uploads'));
 
+
+app.use('/webhook', webhookMpesa);  // ← URL que você vai colocar no portal da Vodacom
 /* ===============================
    CONTADOR DE DOCUMENTOS
 =================================*/
@@ -161,6 +168,17 @@ app.get('/api/documentos/count', async (req, res) => {
     console.error("❌ Erro ao contar documentos:", error);
     res.status(500).json({ message: 'Erro ao contar documentos' });
   }
+});
+
+
+// ===== ROTA PARA ACORDAR O RENDER (OBRIGATÓRIO NO FREE PLAN) =====
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'API RPA Live rodando perfeitamente!',
+    time: new Date().toISOString(),
+    uptime: process.uptime()
+  });
 });
 
 /* ===============================
