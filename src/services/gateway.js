@@ -1,40 +1,25 @@
+// services/gateway.js
 const mpesaC2B = require('../api/mpesa/mpesaC2B');
-const mpesaB2C = require('../api/mpesa/mpesaB2C');
-const emolaC2B = require('../api/emola/emolaC2B');
-const emolaB2C = require('../api/emola/emolaB2C');
+const emolaC2B = require('../api/emola/emolaC2B'); // você já deve ter
 
-console.log({ mpesaC2B, mpesaB2C, emolaC2B, emolaB2C });  // Só para debug em desenvolvimento
 
 class Gateway {
-  async payment(method, phone, amount, type) {
-    console.log(`Gateway.payment called with method=${method}, phone=${phone}, amount=${amount}, type=${type}`);
+  generateReference() {
+    return `RPA${Date.now()}${Math.floor(Math.random() * 10000)}`;
+  }
 
-    const isMpesa = method === 'mpesa';
-    const isEmola = method === 'emola';
-    const isB2C = type === 'b2c';
+  async payment(method, phone, amount, type, customRef = null) {
+    const reference = customRef || this.generateReference();
+    console.log(`[Gateway] Iniciando pagamento: ${method}, ${phone}, ${amount} MZN, ref: ${reference}`);
 
-    if (isMpesa && isB2C) {
-      console.log('Rota escolhida: mpesaB2C.payment');
-      return mpesaB2C.payment(phone, amount);
+    if (method === 'mpesa') {
+      return await mpesaC2B.payment(phone, amount, reference);
+    }
+    if (method === 'emola') {
+      return await emolaC2B.payment(phone, amount, reference);
     }
 
-    if (isMpesa && !isB2C) {
-      console.log('Rota escolhida: mpesaC2B.payment');
-      return mpesaC2B.payment(phone, amount);
-    }
-
-    if (isEmola && isB2C) {
-      console.log('Rota escolhida: emolaB2C.payment');
-      return emolaB2C.payment(phone, amount);
-    }
-
-    if (isEmola && !isB2C) {
-      console.log('Rota escolhida: emolaC2B.payment');
-      return emolaC2B.payment(phone, amount);
-    }
-
-    // Caso o método não seja reconhecido
-    throw new Error(`Método de pagamento inválido: ${method}`);
+    throw new Error('Método de pagamento não suportado: ' + method);
   }
 }
 

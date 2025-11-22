@@ -125,17 +125,25 @@ router.post('/processar', verificarToken, async (req, res) => {
           dataExpiracao: anuncio.dataExpiracao
         });
       }
-
-      // PAGAMENTO REAL (M-Pesa / e-Mola)
+      // PAGAMENTO REAL (M-Pesa / e-Mola) — FUNCIONA EM SANDBOX E PRODUÇÃO
       let pay;
       for (let i = 1; i <= 5; i++) {
         pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
-        if (pay.status === 'pending') break;
+
+        // ACEITA 'pending' (produção) OU 'success' (sandbox M-Pesa)
+        if (pay.status === 'pending' || pay.status === 'success') {
+          break; // sai do loop — pagamento iniciado ou já aprovado no sandbox
+        }
+
         if (i < 5) await new Promise(r => setTimeout(r, 5000));
       }
 
-      if (pay.status !== 'pending') {
-        return res.status(400).json({ sucesso: false, mensagem: pay.message || 'Pagamento falhou. Tente novamente.' });
+      // Se NÃO for pending nem success → falhou mesmo
+      if (pay.status !== 'pending' && pay.status !== 'success') {
+        return res.status(400).json({ 
+          sucesso: false, 
+          mensagem: pay.message || 'Pagamento falhou. Tente novamente.' 
+        });
       }
 
       const pagamento = new Pagamento({
