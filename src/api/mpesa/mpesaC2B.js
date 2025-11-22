@@ -54,7 +54,8 @@ class mpesaC2B {
 
     // === REFERÊNCIA ÚNICA ===
     const reference = customReference || this.generateUniqueReference();
-    const transactionRef = Date.now().toString().slice(-10); // 10 dígitos
+    // Garante exatamente 12 dígitos
+const transactionRef = String(Date.now()).slice(-12).padStart(12, '0');
 
     // === PAYLOAD PARA A API ===
     const payload = {
