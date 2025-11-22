@@ -39,7 +39,7 @@ const calcularValidade = (pag, hoje = new Date()) => {
 };
 
 // ==============================================================
-// 1. PROCESSAR PAGAMENTO (100% CORRIGIDO PARA PRODUÇÃO)
+// 1. PROCESSAR PAGAMENTO (SANDBOX + PRODUÇÃO 100% FUNCIONAL)
 // ==============================================================
 router.post('/processar', verificarToken, async (req, res) => {
   let { method, phone, amount, type, pacote, anuncioId, weeks } = req.body;
@@ -102,71 +102,65 @@ router.post('/processar', verificarToken, async (req, res) => {
         await anuncio.save();
 
         const pagamento = new Pagamento({
-          usuarioId,
-          pacote: 'anuncio',
-          metodoPagamento: 'teste',
-          valor: amount,
-          telefone: null,
-          status: 'aprovado',
-          tipoPagamento: 'anuncio',
-          dataPagamento: new Date(),
-          gatewayResponse: { message: 'Ativado (teste)' },
-          referencia: referenciaUnica,
-          anuncioId: anuncio._id
+          usuarioId, pacote: 'anuncio', metodoPagamento: 'teste', valor: amount, telefone: null,
+          status: 'aprovado', tipoPagamento: 'anuncio', dataPagamento: new Date(),
+          gatewayResponse: { message: 'Ativado (teste)' }, referencia: referenciaUnica, anuncioId: anuncio._id
         });
         await pagamento.save();
 
         return res.status(201).json({
-          sucesso: true,
-          mensagem: 'Anúncio ativado com sucesso!',
-          anuncioId: anuncio._id,
-          weeks: weeksNum,
-          validadeDias: weeksNum * 7,
-          dataExpiracao: anuncio.dataExpiracao
+          sucesso: true, mensagem: 'Anúncio ativado com sucesso!', anuncioId: anuncio._id,
+          weeks: weeksNum, validadeDias: weeksNum * 7, dataExpiracao: anuncio.dataExpiracao
         });
       }
-      // PAGAMENTO REAL (M-Pesa / e-Mola) — FUNCIONA EM SANDBOX E PRODUÇÃO
+
+      // PAGAMENTO REAL (M-Pesa / e-Mola)
       let pay;
       for (let i = 1; i <= 5; i++) {
         pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
-
-        // ACEITA 'pending' (produção) OU 'success' (sandbox M-Pesa)
-        if (pay.status === 'pending' || pay.status === 'success') {
-          break; // sai do loop — pagamento iniciado ou já aprovado no sandbox
-        }
-
+        if (pay.status === 'pending' || pay.status === 'success') break;
         if (i < 5) await new Promise(r => setTimeout(r, 5000));
       }
 
-      // Se NÃO for pending nem success → falhou mesmo
       if (pay.status !== 'pending' && pay.status !== 'success') {
-        return res.status(400).json({ 
-          sucesso: false, 
-          mensagem: pay.message || 'Pagamento falhou. Tente novamente.' 
-        });
+        return res.status(400).json({ sucesso: false, mensagem: pay.message || 'Pagamento falhou. Tente novamente.' });
       }
 
+      const isSandboxSuccess = pay.status === 'success'; // ← Só true no sandbox
+
       const pagamento = new Pagamento({
-        usuarioId,
-        pacote: 'anuncio',
-        metodoPagamento: method,
-        valor: amount,
-        telefone: phone,
-        status: 'pendente',
+        usuarioId, pacote: 'anuncio', metodoPagamento: method, valor: amount, telefone: phone,
+        status: isSandboxSuccess ? 'aprovado' : 'pendente',
         tipoPagamento: 'anuncio',
-        dataPagamento: null,
+        dataPagamento: isSandboxSuccess ? new Date() : null,
         gatewayResponse: pay,
         referencia: referenciaUnica,
         anuncioId: anuncio._id
       });
       await pagamento.save();
 
+      // ATIVA NA HORA NO SANDBOX
+      if (isSandboxSuccess) {
+        anuncio.status = 'active';
+        anuncio.dataAtivacao = new Date();
+        anuncio.dataExpiracao = new Date(Date.now() + weeksNum * 7 * 24 * 60 * 60 * 1000);
+        await anuncio.save();
+
+        return res.status(201).json({
+          sucesso: true,
+          mensagem: 'Anúncio ativado com sucesso! (Sandbox)',
+          anuncioId: anuncio._id,
+          weeks: weeksNum,
+          validadeDias: weeksNum * 7,
+          dataExpiracao: anuncio.dataExpiracao
+        });
+      }
+
+      // Produção → pendente
       return res.json({
-        sucesso: true,
-        status: 'pendente',
+        sucesso: true, status: 'pendente',
         mensagem: 'Pagamento iniciado! Confirme no seu telemóvel.',
-        referencia: referenciaUnica,
-        tempoEstimado: 'Até 2 minutos'
+        referencia: referenciaUnica, tempoEstimado: 'Até 2 minutos'
       });
     }
 
@@ -186,27 +180,18 @@ router.post('/processar', verificarToken, async (req, res) => {
       return res.status(400).json({ sucesso: false, mensagem: `Valor deve ser ${config.preco} MZN para o pacote ${pacote}.` });
     }
 
-    // PLANO TESTE
+    // PLANO TESTE GRÁTIS
     if (pacote.toLowerCase() === 'teste') {
       const pagamento = new Pagamento({
-        usuarioId,
-        pacote: 'teste',
-        metodoPagamento: 'teste',
-        valor: 25,
-        telefone: null,
-        status: 'aprovado',
-        tipoPagamento: 'assinatura',
-        dataPagamento: new Date(),
-        gatewayResponse: { message: 'Plano de teste ativado (5 dias)' },
-        referencia: referenciaUnica
+        usuarioId, pacote: 'teste', metodoPagamento: 'teste', valor: 25, telefone: null,
+        status: 'aprovado', tipoPagamento: 'assinatura', dataPagamento: new Date(),
+        gatewayResponse: { message: 'Plano de teste ativado (5 dias)' }, referencia: referenciaUnica
       });
       await pagamento.save();
 
       return res.status(201).json({
-        sucesso: true,
-        mensagem: 'Plano de teste ativado por 5 dias!',
-        validadeDias: 5,
-        expiraEm: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+        sucesso: true, mensagem: 'Plano de teste ativado por 5 dias!',
+        validadeDias: 5, expiraEm: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
       });
     }
 
@@ -214,35 +199,40 @@ router.post('/processar', verificarToken, async (req, res) => {
     let pay;
     for (let i = 1; i <= 5; i++) {
       pay = await Gateway.payment(method, phone, amount, type, referenciaUnica);
-      if (pay.status === 'pending') break;
+      if (pay.status === 'pending' || pay.status === 'success') break;
       if (i < 5) await new Promise(r => setTimeout(r, 5000));
     }
 
-    if (pay.status !== 'pending') {
+    if (pay.status !== 'pending' && pay.status !== 'success') {
       return res.status(400).json({ sucesso: false, mensagem: pay.message || 'Pagamento falhou. Tente novamente.' });
     }
 
+    const isSandboxSuccess = pay.status === 'success';
+
     const pagamento = new Pagamento({
-      usuarioId,
-      pacote: pacote.toLowerCase(),
-      metodoPagamento: method,
-      valor: amount,
-      telefone: phone,
-      status: 'pendente',
+      usuarioId, pacote: pacote.toLowerCase(), metodoPagamento: method, valor: amount, telefone: phone,
+      status: isSandboxSuccess ? 'aprovado' : 'pendente',
       tipoPagamento: 'assinatura',
-      dataPagamento: null,
+      dataPagamento: isSandboxSuccess ? new Date() : null,
       gatewayResponse: pay,
       referencia: referenciaUnica
     });
     await pagamento.save();
 
+    if (isSandboxSuccess) {
+      return res.status(201).json({
+        sucesso: true,
+        mensagem: `Plano ${pacote} ativado com sucesso! (Sandbox)`,
+        pacote: pacote.toLowerCase(),
+        validadeDias: config.dias,
+        expiraEm: new Date(Date.now() + config.dias * 24 * 60 * 60 * 1000)
+      });
+    }
+
     return res.json({
-      sucesso: true,
-      status: 'pendente',
+      sucesso: true, status: 'pendente',
       mensagem: 'Pagamento iniciado! Confirme no seu telemóvel.',
-      referencia: referenciaUnica,
-      pacote: pacote,
-      validadeDias: config.dias
+      referencia: referenciaUnica, pacote: pacote, validadeDias: config.dias
     });
 
   } catch (error) {
@@ -254,6 +244,7 @@ router.post('/processar', verificarToken, async (req, res) => {
     });
   }
 });
+
 
 // ==============================================================
 // 2. LISTAR MEUS PAGAMENTOS
