@@ -31,15 +31,16 @@ class mpesaC2B {
     console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}, ref=${customReference}`);
 
     // === VALIDA E FORMATA O NÚMERO ===
-    let formattedPhone = phone.replace(/[^0-9]/g, '');
-    if (!formattedPhone.startsWith('258')) {
-      if (/^8[4-7]\d{7}$/.test(formattedPhone)) {
-        formattedPhone = '258' + formattedPhone.substring(1); // 84 → 25884
-        console.log(`[mpesaC2B] Número corrigido: ${formattedPhone}`);
-      } else {
-        throw new Error('Número de telefone inválido. Use 84/85/86/87 + 7 dígitos.');
-      }
-    }
+   // === VALIDA E FORMATA O NÚMERO ===
+let formattedPhone = phone.replace(/[^0-9]/g, '');
+if (!formattedPhone.startsWith('258')) {
+  if (/^8[4-7]\d{8}$/.test(formattedPhone)) {  // ← MUDEI AQUI: \d{8} (9 dígitos no total)
+    formattedPhone = '258' + formattedPhone;    // ← Agora adiciona 258 + 84XXXXXXXXX (12 dígitos)
+    console.log(`[mpesaC2B] Número corrigido: ${formattedPhone}`);
+  } else {
+    throw new Error('Número inválido. Deve ter 9 dígitos (ex: 847877405)');
+  }
+}
 
     // === REFERÊNCIA ÚNICA ===
     const reference = customReference || this.generateUniqueReference();
