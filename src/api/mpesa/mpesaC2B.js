@@ -1,100 +1,114 @@
-const axios = require('axios'); 
+// api/mpesa/mpesaC2B.js
+const axios = require('axios');
 const crypto = require('crypto');
 const config = require('./config');
 
 class mpesaC2B {
+  // Gera token Bearer criptografado com RSA
+  generateBearerToken(apiKey, publicKeyPem) {
+    try {
+      const encrypted = crypto.publicEncrypt(
+        {
+          key: publicKeyPem,
+          padding: crypto.constants.RSA_PKCS1_PADDING,
+        },
+        Buffer.from(apiKey)
+      );
+      return encrypted.toString('base64');
+    } catch (error) {
+      console.error('[mpesaC2B] Erro ao gerar token:', error.message);
+      throw new Error('Falha na autenticação com M-Pesa');
+    }
+  }
 
-    generateBearerToken(apiKey, publicKeyPem) {
-        try {
-            console.log('[mpesaC2B] Gerando token Bearer...');
-            const encrypted = crypto.publicEncrypt(
-                {
-                    key: publicKeyPem,
-                    padding: crypto.constants.RSA_PKCS1_PADDING,
-                },
-                Buffer.from(apiKey)
-            );
-            const token = encrypted.toString('base64');
-            console.log('[mpesaC2B] Token Bearer gerado:', token);
-            return token;
-        } catch (error) {
-            console.error('[mpesaC2B] Erro ao gerar token:', error.message);
-            throw new Error('Erro ao gerar token: ' + error.message);
-        }
+  // Gera referência única (ex: RPA17394561237890)
+  generateUniqueReference() {
+    return `RPA${Date.now()}${Math.floor(Math.random() * 10000)}`;
+  }
+
+  // Função principal de pagamento
+  async payment(phone, amount, customReference = null) {
+    console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}, ref=${customReference}`);
+
+    // === VALIDA E FORMATA O NÚMERO ===
+    let formattedPhone = phone.replace(/[^0-9]/g, '');
+    if (!formattedPhone.startsWith('258')) {
+      if (/^8[4-7]\d{7}$/.test(formattedPhone)) {
+        formattedPhone = '258' + formattedPhone.substring(1); // 84 → 25884
+        console.log(`[mpesaC2B] Número corrigido: ${formattedPhone}`);
+      } else {
+        throw new Error('Número de telefone inválido. Use 84/85/86/87 + 7 dígitos.');
+      }
     }
 
+    // === REFERÊNCIA ÚNICA ===
+    const reference = customReference || this.generateUniqueReference();
+    const transactionRef = Date.now().toString().slice(-10); // 10 dígitos
 
-generateCode() {
-  const timestamp = Date.now().toString().slice(-7);  // últimos 7 dígitos do timestamp
-  const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0'); // 3 dígitos aleatórios
-  const code = `${timestamp}${randomNum}`;  // total 10 caracteres
-  console.log('[mpesaC2B] Código gerado para transação:', code);
-  return code;
-}
+    // === PAYLOAD PARA A API ===
+    const payload = {
+      input_TransactionReference: transactionRef,
+      input_CustomerMSISDN: formattedPhone,
+      input_Amount: amount.toString(),
+      input_ThirdPartyReference: reference, // ← ÚNICO E OBRIGATÓRIO!
+      input_ServiceProviderCode: config.serviceProviderCode,
+    };
 
+    console.log('[mpesaC2B] Payload enviado:', payload);
 
+    try {
+      // === GERA TOKEN ===
+      const token = this.generateBearerToken(config.apiKey, config.publicKey);
 
-    async payment(phone, amount) {
-        console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}`);
+      // === URL DINÂMICA (sandbox ou produção) ===
+      const baseUrl = process.env.NODE_ENV === 'production'
+        ? 'https://api.vm.co.mz:18352/ipg/v1x/c2bPayment/singleStage/'
+        : 'https://api.sandbox.vm.co.mz:18352/ipg/v1x/c2bPayment/singleStage/';
 
+      // === CHAMADA À API M-PESA ===
+      const response = await axios.post(baseUrl, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Origin': 'developer.mpesa.vm.co.mz',
+        },
+        timeout: 30000
+      });
 
-         // ✅ Garantir que o número está no formato internacional (25884XXXXXXX)
-    if (!phone.startsWith('258')) {
-        if (/^8\d{8}$/.test(phone)) {
-            phone = '258' + phone;
-            console.log(`[mpesaC2B] Prefixo 258 adicionado: ${phone}`);
-        } else {
-            throw new Error('[mpesaC2B] Número de telefone inválido. Deve começar com 84 ou 85 e ter 9 dígitos.');
-        }
-    }
+      const data = response.data;
+      console.log('[mpesaC2B] Resposta da API:', data);
 
-        const code = this.generateCode();
-
-        const reference = 'RpaLive';
-        console.log(`[mpesaC2B] Referência gerada: ${reference}`);
-
-        const payload = {
-            input_TransactionReference: code,
-            input_CustomerMSISDN: phone,
-            input_Amount: amount,
-            input_ThirdPartyReference: reference,
-            input_ServiceProviderCode: config.serviceProviderCode,
+      // === TODAS AS RESPOSTAS "INS-0" ou "Accepted" = PENDING ===
+      if (
+        data.output_ResponseCode === 'INS-0' ||
+        data.output_ResponseDesc?.includes('Accepted') ||
+        data.output_ResponseDesc?.includes('Request')
+      ) {
+        return {
+          status: 'pending', // ← STATUS CORRETO!
+          reference: reference,
+          transactionId: data.output_TransactionID || data.output_ConversationID,
+          message: 'Pagamento iniciado. Confirme no seu telemóvel.',
+          raw: data
         };
+      }
 
-        console.log('[mpesaC2B] Payload para API:', payload);
+      // === QUALQUER OUTRO CÓDIGO = ERRO REAL ===
+      return {
+        status: 'error',
+        message: data.output_ResponseDesc || 'Erro desconhecido na API M-Pesa',
+        raw: data
+      };
 
-        try {
-            // Gerar token criptografado com chave pública
-            const token = this.generateBearerToken(config.apiKey, config.publicKey);
-
-            console.log('[mpesaC2B] Fazendo requisição para API M-Pesa sandbox...');
-            const response = await axios.post(
-                'https://api.sandbox.vm.co.mz:18352/ipg/v1x/c2bPayment/singleStage/',
-                payload,
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token,
-                        'Origin': 'developer.mpesa.vm.co.mz',
-                        timeout: 60000,
-                    },
-                }
-            );
-
-            console.log('[mpesaC2B] Resposta da API recebida:', response.data);
-
-            return {
-                status: 'success',
-                data: response.data,
-            };
-        } catch (error) {
-            console.error('[mpesaC2B] Erro na requisição à API:', error.response?.data || error.message);
-            return {
-                status: 'error',
-                message: error.response?.data || error.message,
-            };
-        }
+    } catch (error) {
+      const errMsg = error.response?.data?.output_ResponseDesc || error.message;
+      console.error('[mpesaC2B] Erro na requisição:', errMsg);
+      return {
+        status: 'error',
+        message: errMsg
+      };
     }
+  }
 }
 
 module.exports = new mpesaC2B();
