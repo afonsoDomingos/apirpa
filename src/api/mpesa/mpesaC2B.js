@@ -30,22 +30,27 @@ class mpesaC2B {
   async payment(phone, amount, customReference = null) {
     console.log(`[mpesaC2B] Iniciando pagamento: phone=${phone}, amount=${amount}, ref=${customReference}`);
 
-     // === VALIDAÇÃO E FORMATAÇÃO DO NÚMERO (ACEITA 84... OU 25884...) ===
+ 
+    // === VALIDAÇÃO E FORMATAÇÃO DO NÚMERO (FUNCIONA COM 84... ou 25884...) ===
     let formattedPhone = phone.toString().replace(/[^0-9]/g, '');
 
-    // Remove 258 se já vier com ele
-    if (formattedPhone.startsWith('258') && formattedPhone.length > 9) {
+    // Remove o 258 se já vier com ele
+    if (formattedPhone.startsWith('258')) {
       formattedPhone = formattedPhone.substring(3);
     }
 
-    // Agora tem que ter exatamente 9 dígitos e começar com 84/85/86/87
-    if (/^8[4-7]\d{8}$/.test(formattedPhone)) {
+    // Agora: tem que ter EXATAMENTE 9 dígitos e começar com 84, 85, 86 ou 87
+    if (/^8[4-7]\d{7}$/.test(formattedPhone)) {
       formattedPhone = '258' + formattedPhone;
-      console.log(`[mpesaC2B] Número válido e formatado: ${formattedPhone}`);
+      console.log(`[mpesaC2B] Número válido → ${formattedPhone}`);
     } else {
-      console.error('[mpesaC2B] Número rejeitado:', phone, '| Limpo:', formattedPhone);
-      return { status: 'error', message: 'Número inválido. Use 84/85/86/87 + 7 dígitos (ex: 847877405)' };
+      console.error('[mpesaC2B] Número rejeitado:', phone, '| Após limpeza:', formattedPhone);
+      return { 
+        status: 'error', 
+        message: 'Número inválido. Use formato 84XXXXXXX (9 dígitos)' 
+      };
     }
+
 
     // === REFERÊNCIA ÚNICA ===
     const reference = customReference || this.generateUniqueReference();
