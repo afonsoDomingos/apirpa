@@ -6,69 +6,102 @@ require('dotenv').config();
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
-// 1. Criar PaymentIntent (chamado pelo frontend)
-router.post('/create-payment-intent', verificarToken, async (req, res) => {
-  try {
-    const { amount, pacote, type } = req.body;
+// VALOR MÍNIMO ACEITO PELO STRIPE EM CENTAVOS DE USD (50 centavos = ~32 MZN)
+const MINIMO_USD_CENTS = 50;
+const TAXA_MZN_PARA_USD = 63.5; // 1 USD ≈ 63.5 MZN em 2025
 
+// 1. CRIAR PAYMENT INTENT (CORRIGIDO E BLINDADO)
+router.post('/create-payment-inent', verificarToken, async (req, res) => {
+  try {
+    let { amount, pacote, type } = req.body;
+
+    // Validações obrigatórias
     if (!amount || !pacote || !type) {
-      return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos' });
+      return res.status(400).json({ sucesso: false, mensagem: 'Faltam dados obrigatórios' });
     }
 
-    // Converter MZN → USD (taxa realista 2025)
-    const USD_RATE = 63.5;
-    const amountUsdCents = Math.round((amount / USD_RATE) * 100);
+    // Converte e valida o valor
+    amount = parseInt(amount, 10);
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ sucesso: false, mensagem: 'Valor inválido' });
+    }
+
+    // Bloqueia valores muito baixos (plano teste de 25 MZN não funciona com cartão)
+    if (amount < 32) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Valor muito baixo para cartão. Use M-Pesa/e-Mola ou escolha o plano Mensal/Anual.'
+      });
+    }
+
+    // Converte MZN → centavos de USD (arredondado)
+    const amountUsdCents = Math.round((amount / TAXA_MZN_PARA_USD) * 100);
+
+    if (amountUsdCents < MINIMO_USD_CENTS) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: `O valor mínimo para cartão é ~32 MZN (≈ ${MINIMO_USD_CENTS} centavos USD)`
+      });
+    }
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountUsdCents,
       currency: 'usd',
-      payment_method_types: ['card'],
+      payment_method_types: ['card'], // Força cartão (evita avisos de Link/CashApp)
       automatic_payment_methods: { enabled: true },
       metadata: {
         usuarioId: req.usuario.id,
-        pacote,
+        pacote: pacote.toLowerCase(),
         type,
-        amount_mzn: amount,
+        amount_mzn: amount.toString(),
       },
     });
 
     res.json({
+      sucesso: true,
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
     });
+
   } catch (err) {
-    console.error('Erro Stripe:', err);
-    res.status(500).json({ sucesso: false, mensagem: 'Erro ao criar pagamento' });
+    console.error('ERRO NO STRIPE (create-payment-intent):', err.message);
+    res.status(500).json({
+      sucesso: false,
+      mensagem: 'Erro ao processar cartão',
+      erro: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
-// 2. Webhook Stripe — VERSÃO FINAL E SEGURA (2025)
+// 2. WEBHOOK (CORRIGIDO E MELHORADO)
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  let event;
 
+  let event;
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    console.log(`Webhook recebido: ${event.type}`);
   } catch (err) {
-    console.log(`Webhook signature verification failed.`, err.message);
+    console.error(`Webhook signature verification failed:`, err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Só processamos pagamento aprovado
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
     const { usuarioId, pacote, amount_mzn } = pi.metadata;
 
-    console.log(`Pagamento com cartão aprovado! User: ${usuarioId} | Plano: ${pacote} | MZN ${amount_mzn}`);
+    console.log(`PAGAMENTO APROVADO! User: ${usuarioId} | Plano: ${pacote} | ${amount_mzn} MZN`);
 
     try {
       const Pagamento = require('../models/pagamentoModel');
+      const User = require('../models/userModel');
 
-      const novoPagamento = new Pagamento({
+      // Salva o pagamento
+      await new Pagamento({
         usuarioId,
         pacote: pacote || 'mensal',
         metodoPagamento: 'card',
@@ -79,25 +112,23 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         dataPagamento: new Date(),
         gatewayResponse: { paymentIntent: pi.id },
         referencia: pi.id,
-      });
-      await novoPagamento.save();
+      }).save();
 
-      // Ativa o premium do usuário
-      const User = require('../models/userModel');
+      // Ativa o premium com validade correta
+      const dias = pacote === 'anual' ? 365 : 30;
       await User.findByIdAndUpdate(usuarioId, {
         premium: true,
         plano: pacote,
-        dataExpiracao: pacote === 'anual' 
-          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        dataExpiracao: new Date(Date.now() + dias * 24 * 60 * 60 * 1000),
       });
 
-      console.log(`Usuário ${usuarioId} agora é PREMIUM!`);
+      console.log(`Usuário ${usuarioId} agora é PREMIUM (${pacote})!`);
     } catch (err) {
-      console.error('Erro ao salvar pagamento ou ativar premium:', err);
+      console.error('Erro ao ativar premium:', err);
     }
   }
 
+  // Sempre responde 200 para o Stripe
   res.json({ received: true });
 });
 
