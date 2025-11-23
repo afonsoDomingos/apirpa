@@ -7,7 +7,11 @@ const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const Documento = require('./models/documentoModel');
 
-// Rotas
+// ==================== ROTAS QUE PRECISAM DE BODY RAW (WEBHOOKS) ====================
+const stripeRoutes = require('./routes/stripeRoutes');   // Webhook do Stripe
+const webhookMpesa = require('./routes/webhookMpesa');   // Webhook M-Pesa / Emola
+
+// ==================== DEMAIS ROTAS NORMAIS ====================
 const chatbotRoutes = require('./routes/chatbot');
 const documentoRoutes = require('./routes/documentoRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -20,41 +24,39 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 
-const webhookMpesa = require('./routes/webhookMpesa');
-
 // Meta CAPI
 const { sendConversionEvent } = require('./services/metaConversions');
 
-
-// Depois de todas as rotas existentes
-const stripeRoutes = require('./routes/stripeRoutes');
-
-
 const app = express();
+const server = http.createServer(app);
 const port = process.env.PORT || 5000;
 
 /* ===============================
-    VARIÁVEIS DE AMBIENTE
+    VERIFICAÇÃO DAS VARIÁVEIS
 =================================*/
-console.log("\n===============================");
-console.log("🔧 VERIFICAÇÃO DAS VARIÁVEIS");
-console.log("===============================\n");
+console.log("\n════════════════════════════════");
+console.log(" VERIFICAÇÃO DAS VARIÁVEIS");
+console.log("════════════════════════════════\n");
 
-console.log(`➡️ MPESA_API_KEY: ${process.env.MPESA_API_KEY ? "✔ OK" : "❌ NÃO CARREGADA"}`);
-console.log(`➡️ MPESA_PUBLIC_KEY: ${process.env.MPESA_PUBLIC_KEY ? "✔ OK" : "❌ NÃO CARREGADA"}`);
-console.log(`➡️ MPESA_C2B_URL: ${process.env.MPESA_C2B_URL ? "✔ OK" : "❌ NÃO CARREGADA"}`);
-console.log("🔵 Meta CAPI inicializado.\n");
+console.log(`MPESA_API_KEY: ${process.env.MPESA_API_KEY ? "OK" : "NÃO CARREGADA"}`);
+console.log(`MPESA_PUBLIC_KEY: ${process.env.MPESA_PUBLIC_KEY ? "OK" : "NÃO CARREGADA"}`);
+console.log(`MPESA_C2B_URL: ${process.env.MPESA_C2B_URL ? "OK" : "NÃO CARREGADA"}`);
+console.log("Meta CAPI inicializado.\n");
 
 /* ===============================
-             MIDDLEWARES
+   1. WEBHOOKS PRIMEIRO → ANTES DO express.json()!!!
+=================================*/
+app.use('/webhook-stripe', stripeRoutes);   // Stripe (raw body)
+app.use('/webhook-mpesa', webhookMpesa);    // M-Pesa/Emola
+
+/* ===============================
+   2. AGORA SIM O PARSER JSON (seguro)
 =================================*/
 app.use(express.json());
 
 /* ===============================
                 CORS
 =================================*/
-console.log("🌐 Configurando CORS...");
-
 const allowedOrigins = [
   'https://recuperaaqui.vercel.app',
   'http://localhost:3000',
@@ -64,10 +66,10 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
-      console.log(`🟢 CORS permitido: ${origin || "sem origem (mobile/postman)"}`);
+      console.log(`CORS permitido: ${origin || "sem origem (mobile/postman)"}`);
       callback(null, true);
     } else {
-      console.log(`⛔ CORS BLOQUEADO: ${origin}`);
+      console.log(`CORS BLOQUEADO: ${origin}`);
       callback(null, false);
     }
   },
@@ -79,70 +81,50 @@ app.use(cors({
 /* ===============================
              SOCKET.IO
 =================================*/
-console.log("🔌 Iniciando Socket.IO...");
-
-const server = http.createServer(app);
-
 const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  },
+  cors: { origin: allowedOrigins, methods: ['GET', 'POST', 'PUT', 'DELETE'] },
 });
 
 io.on('connection', (socket) => {
-  console.log(`🟢 Socket conectado: ${socket.id}`);
-
-  socket.on('disconnect', () => {
-    console.log(`🔴 Socket desconectado: ${socket.id}`);
-  });
+  console.log(`Socket conectado: ${socket.id}`);
+  socket.on('disconnect', () => console.log(`Socket desconectado: ${socket.id}`));
 });
 
 app.set('io', io);
 
 /* ===============================
-    ROTA: FACEBOOK CONVERSIONS API
+    ROTA FACEBOOK CONVERSIONS API
 =================================*/
 app.post('/api/facebook/conversion', async (req, res) => {
-  console.log("\n📩 Recebendo evento do frontend para CAPI...");
+  console.log("\nRecebendo evento do frontend para Meta CAPI...");
 
   try {
     const { event_name, eventData = {}, userData = {}, event_id } = req.body;
 
     if (!event_id) {
-      console.log("⚠️ ERRO: event_id não foi enviado!");
+      console.log("ERRO: event_id não foi enviado!");
       return res.status(400).json({ error: 'event_id é obrigatório' });
     }
 
-    console.log(`📤 Enviando evento para Meta: ${event_name} | ID: ${event_id}`);
+    console.log(`Enviando evento para Meta: ${event_name} | ID: ${event_id}`);
 
-    await sendConversionEvent(
-      event_name,
-      {
-        ...eventData,
-        ip: req.ip || req.connection.remoteAddress,
-        userAgent: req.headers['user-agent']
-      },
-      userData,
-      event_id
-    );
+    await sendConversionEvent(event_name, {
+      ...eventData,
+      ip: req.ip || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent']
+    }, userData, event_id);
 
-    console.log("✅ Evento CAPI enviado com sucesso!");
+    console.log("Evento CAPI enviado com sucesso!");
     res.json({ success: true });
   } catch (error) {
-    console.error("❌ ERRO NA ROTA CAPI:", error.message);
+    console.error("ERRO NA ROTA CAPI:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
 /* ===============================
-                ROTAS
+           ROTAS NORMAIS
 =================================*/
-console.log("\n🛣️ Registrando rotas da API...");
-
-
-
-
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
 app.use('/api/chatbot', chatbotRoutes);
@@ -157,30 +139,27 @@ app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
 app.use('/api/anuncios', anunciosRouter);
 
+// Rota normal do Stripe (create-payment-intent)
 app.use('/api/stripe', stripeRoutes);
 
 app.use('/uploads', express.static('uploads'));
-
-
-app.use('/webhook', webhookMpesa);  // ← URL que você vai colocar no portal da Vodacom
-
 
 /* ===============================
    CONTADOR DE DOCUMENTOS
 =================================*/
 app.get('/api/documentos/count', async (req, res) => {
-  console.log("📊 Contando documentos com origem 'reportado'...");
   try {
     const count = await Documento.countDocuments({ origem: 'reportado' });
     res.json({ count });
   } catch (error) {
-    console.error("❌ Erro ao contar documentos:", error);
+    console.error("Erro ao contar documentos:", error);
     res.status(500).json({ message: 'Erro ao contar documentos' });
   }
 });
 
-
-// ===== ROTA PARA ACORDAR O RENDER (OBRIGATÓRIO NO FREE PLAN) =====
+/* ===============================
+          HEALTH CHECK
+=================================*/
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -191,23 +170,25 @@ app.get('/health', (req, res) => {
 });
 
 /* ===============================
-   INICIAR API + MONGO
+       INICIAR SERVIDOR
 =================================*/
-console.log("\n🔗 Conectando ao MongoDB...");
-
 connectDB()
   .then(() => {
-    console.log("✅ MongoDB conectado com sucesso!");
+    console.log("MongoDB conectado com sucesso!");
     server.listen(port, () => {
-      console.log("\n====================================");
-      console.log(`🚀 Servidor rodando na porta ${port}`);
-      console.log("📡 Socket.IO ativo");
-      console.log("📍 CAPI: POST /api/facebook/conversion");
-      console.log("🟢 API pronta para receber requisições");
-      console.log("====================================\n");
+      console.log("\n════════════════════════════════════");
+      console.log(" SERVIDOR RODANDO COM SUCESSO");
+      console.log("════════════════════════════════════");
+      console.log(`Servidor rodando na porta ${port}`);
+      console.log("Socket.IO ativo");
+      console.log("Webhook Stripe → POST /webhook-stripe");
+      console.log("Webhook M-Pesa → POST /webhook-mpesa");
+      console.log("CAPI: POST /api/facebook/conversion");
+      console.log("🟢API pronta para receber requisições");
+      console.log("════════════════════════════════════\n");
     });
   })
   .catch(err => {
-    console.error("❌ ERRO AO CONECTAR NO MONGO:", err);
+    console.error("ERRO AO CONECTAR NO MONGO:", err);
     process.exit(1);
   });
