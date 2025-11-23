@@ -97,51 +97,7 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
-/* ===============================
-     WEBHOOK STRIPE (RAW BODY!)
-=================================*/
-// Esta rota TEM que vir ANTES de express.json() interferir no body
-app.post('/webhook/stripe', express.raw({ type: 'application/json' }), (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  console.log('\nWEBHOOK STRIPE CHAMADO!');
-  console.log('Headers stripe-signature:', sig ? 'Presente' : 'Ausente');
-  console.log('Tamanho do body bruto:', req.body.length);
-
-  let event;
-
-  try {
-    if (!sig || !webhookSecret) {
-      console.log('Erro: Stripe signature ou secret ausente');
-      return res.status(400).send('Webhook Error: config error');
-    }
-
-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-    console.log(`Evento Stripe recebido: ${event.type}`);
-  } catch (err) {
-    console.log(`Erro no webhook Stripe: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  // Aqui colocas a tua lógica de tratamento de eventos
-  switch (event.type) {
-    case 'checkout.session.completed':
-      console.log('Pagamento concluído com sucesso!', event.data.object);
-      // Exemplo: atualizar usuário para premium, enviar email, etc.
-      break;
-    case 'payment_intent.succeeded':
-      console.log('PaymentIntent succeeded:', event.data.object.id);
-      break;
-    case 'payment_intent.payment_failed':
-      console.log('Pagamento falhou:', event.data.object.last_payment_error?.message);
-      break;
-    default:
-      console.log(`Evento não tratado: ${event.type}`);
-  }
-
-  res.json({ received: true });
-});
 
 /* ===============================
    ROTA: FACEBOOK CONVERSIONS API
