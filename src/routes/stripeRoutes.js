@@ -11,7 +11,7 @@ const MINIMO_USD_CENTS = 50;
 const TAXA_MZN_PARA_USD = 63.5; // 1 USD ≈ 63.5 MZN em 2025
 
 // 1. CRIAR PAYMENT INTENT (CORRIGIDO E BLINDADO)
-router.post('/create-payment-inent', verificarToken, async (req, res) => {
+router.post('/create-payment-intent', verificarToken, async (req, res) => {
   try {
     let { amount, pacote, type } = req.body;
 
