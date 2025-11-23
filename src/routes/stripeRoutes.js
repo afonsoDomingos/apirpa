@@ -9,14 +9,14 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 // 1. Criar PaymentIntent (chamado pelo frontend)
 router.post('/create-payment-intent', verificarToken, async (req, res) => {
   try {
-    const { amount, pacote, type } = req.body; // amount em MZN (centavos virão depois)
+    const { amount, pacote, type } = req.body;
 
     if (!amount || !pacote || !type) {
       return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos' });
     }
 
-    // Converter MZN → USD (taxa fixa realista 2025)
-    const USD_RATE = 63.5; // 1 USD ≈ 63.5 MZN (atualizado Nov/2025)
+    // Converter MZN → USD (taxa realista 2025)
+    const USD_RATE = 63.5;
     const amountUsdCents = Math.round((amount / USD_RATE) * 100);
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -41,7 +41,7 @@ router.post('/create-payment-intent', verificarToken, async (req, res) => {
   }
 });
 
-// 2. Webhook Stripe (OBRIGATÓRIO para confirmar pagamento real)
+// 2. Webhook Stripe — VERSÃO FINAL E SEGURA (2025)
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -52,6 +52,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
+    console.log(`Webhook recebido: ${event.type}`);
   } catch (err) {
     console.log(`Webhook signature verification failed.`, err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -59,33 +60,40 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
-    const { usuarioId, pacote, type, amount_mzn } = pi.metadata;
+    const { usuarioId, pacote, amount_mzn } = pi.metadata;
 
-    // === AQUI REPLICAS A MESMA LÓGICA DO PAGAMENTO SUCESSO DO M-PESA ===
-    const Pagamento = require('../models/pagamentoModel');
-    const Anuncio = require('../models/Anuncio');
+    console.log(`Pagamento com cartão aprovado! User: ${usuarioId} | Plano: ${pacote} | MZN ${amount_mzn}`);
 
-    const pagamento = new Pagamento({
-      usuarioId,
-      pacote: pacote || 'cartao',
-      metodoPagamento: 'card',
-      valor: parseInt(amount_mzn),
-      telefone: null,
-      status: 'aprovado',
-      tipoPagamento: type,
-      dataPagamento: new Date(),
-      gatewayResponse: { paymentIntent: pi.id },
-      referencia: pi.id,
-    });
-    await pagamento.save();
+    try {
+      const Pagamento = require('../models/pagamentoModel');
 
-    // Se for anúncio
-    if (type === 'anuncio' && pi.metadata.anuncioId) {
-      await Anuncio.findByIdAndUpdate(pi.metadata.anuncioId, {
-        status: 'active',
-        dataAtivacao: new Date(),
-        dataExpiracao: new Date(Date.now() + (pi.metadata.weeks * 7 * 24 * 60 * 60 * 1000)),
+      const novoPagamento = new Pagamento({
+        usuarioId,
+        pacote: pacote || 'mensal',
+        metodoPagamento: 'card',
+        valor: parseInt(amount_mzn),
+        telefone: null,
+        status: 'aprovado',
+        tipoPagamento: 'assinatura',
+        dataPagamento: new Date(),
+        gatewayResponse: { paymentIntent: pi.id },
+        referencia: pi.id,
       });
+      await novoPagamento.save();
+
+      // Ativa o premium do usuário
+      const User = require('../models/userModel');
+      await User.findByIdAndUpdate(usuarioId, {
+        premium: true,
+        plano: pacote,
+        dataExpiracao: pacote === 'anual' 
+          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      });
+
+      console.log(`Usuário ${usuarioId} agora é PREMIUM!`);
+    } catch (err) {
+      console.error('Erro ao salvar pagamento ou ativar premium:', err);
     }
   }
 
