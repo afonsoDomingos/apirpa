@@ -22,6 +22,7 @@ router.post('/create-payment-intent', verificarToken, async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountUsdCents,
       currency: 'usd',
+      payment_method_types: ['card'],
       automatic_payment_methods: { enabled: true },
       metadata: {
         usuarioId: req.usuario.id,
