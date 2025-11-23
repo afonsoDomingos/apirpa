@@ -12,7 +12,7 @@ router.post('/create-payment-intent', verificarToken, async (req, res) => {
     const { amount, pacote, type } = req.body;
 
     if (!amount || !pacote || !type) {
-      return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos' });
+      return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos.' });
     }
 
     // Converter MZN → USD (taxa realista 2025)
