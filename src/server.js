@@ -25,6 +25,11 @@ const webhookMpesa = require('./routes/webhookMpesa');
 // Meta CAPI
 const { sendConversionEvent } = require('./services/metaConversions');
 
+
+// Depois de todas as rotas existentes
+const stripeRoutes = require('./routes/stripeRoutes');
+
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -152,10 +157,14 @@ app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
 app.use('/api/anuncios', anunciosRouter);
 
+app.use('/api/stripe', stripeRoutes);
+
 app.use('/uploads', express.static('uploads'));
 
 
 app.use('/webhook', webhookMpesa);  // ← URL que você vai colocar no portal da Vodacom
+
+
 /* ===============================
    CONTADOR DE DOCUMENTOS
 =================================*/

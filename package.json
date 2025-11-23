@@ -213,6 +213,7 @@
     "string_decoder": "^1.3.0",
     "string-width": "^4.2.3",
     "strip-ansi": "^6.0.1",
+    "stripe": "^20.0.0",
     "tar": "^6.2.1",
     "toidentifier": "^1.0.1",
     "toposort-class": "^1.0.1",
