@@ -46,8 +46,8 @@ console.log("Meta CAPI inicializado.\n");
 /* ===============================
    1. WEBHOOKS PRIMEIRO → ANTES DO express.json()!!!
 =================================*/
-app.use('/webhook-stripe', stripeRoutes);   // Stripe (raw body)
-app.use('/webhook-mpesa', webhookMpesa);    // M-Pesa/Emola
+app.use('/api/stripe', stripeRoutes);   // Stripe (raw body)
+app.use('/webhook', webhookMpesa);    // M-Pesa
 
 /* ===============================
    2. AGORA SIM O PARSER JSON (seguro)
@@ -181,8 +181,8 @@ connectDB()
       console.log("════════════════════════════════════");
       console.log(`Servidor rodando na porta ${port}`);
       console.log("Socket.IO ativo");
-      console.log("Webhook Stripe → POST /webhook-stripe");
-      console.log("Webhook M-Pesa → POST /webhook-mpesa");
+      console.log("Webhook Stripe → POST /api/stripe");
+      console.log("Webhook M-Pesa → POST /webhook/mpesa");
       console.log("CAPI: POST /api/facebook/conversion");
       console.log("🟢API pronta para receber requisições");
       console.log("════════════════════════════════════\n");
