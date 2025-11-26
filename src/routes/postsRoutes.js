@@ -11,26 +11,30 @@ const RPA_BOT_ID = "685bff7d1b6abc16c490af52";
 // ====================================================
 // FUNÇÃO: RpaAdmin Bot (responde automaticamente)
 // ====================================================
+// SUBSTITUI TODA A FUNÇÃO ativarRpaBot POR ESTA (mais inteligente)
 async function ativarRpaBot(post, req) {
-  // Ignora posts do próprio bot
   if (post.autor && post.autor._id === RPA_BOT_ID) return;
 
-  // Delay natural (4 a 8 segundos)
   const delay = 4000 + Math.random() * 4000;
   setTimeout(async () => {
     try {
-      // 1. CLASSIFICAÇÃO: É uma pergunta válida?
+      // CLASSIFICAÇÃO MAIS INTELIGENTE E PERMISSIVA
       const classificacaoPrompt = `
-Você é moderador da comunidade RecuperaAqui (Perdidos e Achados de documentos).
+Analisa o post abaixo da comunidade RecuperaAqui (Perdidos e Achados de documentos).
 
-Responda APENAS com uma das palavras abaixo:
+Responde APENAS com:
+PERGUNTA_VALIDA → se for qualquer dúvida, pedido de ajuda ou informação sobre documentos perdidos, achados, emissão, recuperação, guarda ou uso da plataforma
+FORA_DO_TEMA → apenas se for saudação, piada, propaganda, política, ofensa ou conversa totalmente aleatória
 
-PERGUNTA_VALIDA → se for dúvida real sobre documentos perdidos, achados, emissão, recuperação ou uso da plataforma.
-FORA_DO_TEMA → qualquer outro tipo de post (saudação, piada, propaganda, conversa aleatória, etc).
+Exemplos de PERGUNTA_VALIDA:
+- "Perdi meu BI"
+- "O que faço se encontrei um documento?"
+- "Como tiro 2ª via?"
+- "Alguém achou meu cartão?"
 
 Post: "${post.conteudo}"
 
-Resposta (apenas a palavra):
+Resposta (só uma das duas palavras):
       `.trim();
 
       const classificacaoRes = await axios.post(
@@ -38,7 +42,7 @@ Resposta (apenas a palavra):
         {
           model: 'openai/gpt-oss-20b',
           temperature: 0,
-          max_tokens: 10,
+          max_tokens: 15,
           messages: [{ role: 'user', content: classificacaoPrompt }],
         },
         {
@@ -46,37 +50,39 @@ Resposta (apenas a palavra):
             Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
             'Content-Type': 'application/json',
             'HTTP-Referer': process.env.APP_BASE_URL || 'https://recuperaaqui.vercel.app',
-            'X-Title': 'RpaAdmin Moderador',
+            'X-Title': 'RpaAdmin',
           },
-          timeout: 12000,
         }
       );
 
-      const decisao = classificacaoRes.data.choices[0].message.content.trim().toUpperCase();
+      const decisao = classificacaoRes.data.choices[0].message.content.trim();
 
       if (!decisao.includes('PERGUNTA_VALIDA')) {
-        console.log(`RpaAdmin ignorou (fora do tema): "${post.conteudo}"`);
+        console.log(`RpaAdmin ignorou: "${post.conteudo}" → ${decisao}`);
         return;
       }
 
-      // 2. GERA RESPOSTA ÚTIL
+      console.log(`RpaAdmin vai responder: "${post.conteudo}"`);
+
+      // RESPOSTA AMIGÁVEL E ÚTIL
       const respostaPrompt = `
-Você é o RpaAdmin, assistente oficial da comunidade RecuperaAqui.
+Você é o RpaAdmin, assistente da comunidade RecuperaAqui.
 
-Responda em português de Moçambique, de forma educada, curta e útil (máximo 2 parágrafos).
-Foco: documentos perdidos, achados, emissão, recuperação e uso da plataforma.
+Responda em português de Moçambique, de forma curta, educada e útil.
+Se for sobre documento perdido: orienta a reportar na plataforma + onde tirar 2ª via.
+Se for sobre documento encontrado: explica como reportar e ganhar comissão.
 
-Pergunta do usuário: "${post.conteudo}"
+Pergunta: "${post.conteudo}"
 
-Resposta direta e objetiva:
+Resposta (máximo 2 parágrafos):
       `.trim();
 
       const respostaRes = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {
           model: 'openai/gpt-oss-20b',
-          temperature: 0.7,
-          max_tokens: 180,
+          temperature: 0.8,
+          max_tokens: 200,
           messages: [{ role: 'user', content: respostaPrompt }],
         },
         {
@@ -86,14 +92,12 @@ Resposta direta e objetiva:
             'HTTP-Referer': process.env.APP_BASE_URL || 'https://recuperaaqui.vercel.app',
             'X-Title': 'RpaAdmin Bot',
           },
-          timeout: 15000,
         }
       );
 
       let respostaBot = respostaRes.data.choices[0].message.content.trim();
-      if (!respostaBot || respostaBot.length < 5) return;
+      if (!respostaBot) return;
 
-      // 3. SALVA A RESPOSTA NO BANCO
       const postAtualizado = await Post.findById(post._id);
       if (!postAtualizado) return;
 
@@ -105,7 +109,6 @@ Resposta direta e objetiva:
       await postAtualizado.save();
       await postAtualizado.populate('replies.autor', 'nome initials role');
 
-      // 4. EMITE VIA SOCKET.IO
       const io = req.app.get('io');
       if (io) {
         io.emit('novaResposta', {
@@ -114,7 +117,7 @@ Resposta direta e objetiva:
         });
       }
 
-      console.log(`RpaAdmin respondeu: "${respostaBot}"`);
+      console.log(`RpaAdmin respondeu com sucesso!`);
 
     } catch (err) {
       console.error('Erro no RpaAdmin Bot:', err.message);
