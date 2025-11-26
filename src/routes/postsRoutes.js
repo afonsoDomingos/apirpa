@@ -15,76 +15,59 @@ const RPA_BOT_ID = "685bff7d1b6abc16c490af52";
 // ====================================================
 // FUNÇÃO: RpaAdmin Bot (VERSÃO FINAL 100% FUNCIONAL)
 // ====================================================
+// ====================================================
+// RPAADMIN BOT — VERSÃO FINAL PERFEITA (NUNCA MAIS IGNORA!)
+// ====================================================
 async function ativarRpaBot(post, req) {
+  // Evita loop
   if (post.autor && post.autor._id === RPA_BOT_ID) return;
 
   const delay = 4000 + Math.random() * 4000;
   setTimeout(async () => {
     try {
-      const classificacaoPrompt = `
-Analisa o post da comunidade RecuperaAqui (Perdidos e Achados de documentos).
+      const texto = post.conteudo.toLowerCase();
 
-Responde APENAS com uma das duas palavras:
+      // PALAVRAS-CHAVE QUE SEMPRE DISPARAM RESPOSTA (100% garantido)
+      const palavrasChave = [
+        'perdi', 'perdeu', 'perda', 'roubaram', 'roubado',
+        'encontrei', 'achei', 'achado', 'encontrado',
+        'bi', 'bilhete', 'identidade', 'passaporte',
+        'carta', 'condução', 'certificado', 'habilitações',
+        'documento', 'documentos', 'segunda via', '2ª via', 'duplicado',
+        'recupera', 'recuperar', 'plataforma', 'rpa', 'ajuda'
+      ];
 
-PERGUNTA_VALIDA → se for qualquer dúvida sobre documentos perdidos, achados, emissão, recuperação ou uso da plataforma
-FORA_DO_TEMA → saudação, piada, propaganda, ofensa, conversa aleatória
+      const temPalavraChave = palavrasChave.some(palavra => texto.includes(palavra));
 
-Post: "${post.conteudo}"
-
-Resposta (só uma das duas palavras):
-      `.trim();
-
-      const classificacaoRes = await axios.post(
-        'https://openrouter.ai/api/v1/chat/completions',
-        {
-          model: 'openai/gpt-oss-20b',
-          temperature: 0,
-          max_tokens: 10,
-          messages: [{ role: 'user', content: classificacaoPrompt }],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': process.env.APP_BASE_URL || 'https://recuperaaqui.vercel.app',
-            'X-Title': 'RpaAdmin',
-          },
-          timeout: 15000,
-        }
-      );
-
-      const classificacaoRaw = classificacaoRes.data.choices[0].message.content.trim();
-      console.log('Classificador devolveu →', classificacaoRaw); // ← Vais ver exatamente o que o modelo respondeu
-
-      // ACEITA QUALQUER VARIAÇÃO (maiúsculas, pontos, espaços...)
-      const ehValida = classificacaoRaw
-        .toUpperCase()
-        .replace(/[^A-Z]/g, '')
-        .includes('PERGUNTAVALIDA');
-
-      if (!ehValida) {
+      // Se tiver qualquer uma dessas palavras → responde SEMPRE
+      if (!temPalavraChave) {
         console.log(`RpaAdmin ignorou (fora do tema): "${post.conteudo}"`);
         return;
       }
 
-      console.log(`RpaAdmin VAI RESPONDER → "${post.conteudo}"`);
+      console.log(`RpaAdmin DETECTOU documento → vai responder: "${post.conteudo}"`);
 
-      // GERA RESPOSTA ÚTIL
+      // Prompt perfeito para Moçambique + curto + útil
       const respostaPrompt = `
-Você é o RpaAdmin, assistente oficial da comunidade RecuperaAqui.
-Responde em português de Moçambique, curto, educado e útil.
+Você é o RpaAdmin, assistente oficial da RecuperaAqui em Moçambique.
 
-Pergunta: "${post.conteudo}"
+Responda em português de Moçambique, com no máximo 2 parágrafos, educado e direto ao ponto.
 
-Resposta (máximo 2 parágrafos):
-      `.trim();
+Regras:
+- Se for documento PERDIDO → diz para reportar na plataforma + onde tirar 2ª via
+- Se for documento ENCONTRADO → explica como entregar e ganhar comissão
+- Sempre incentiva usar a plataforma RecuperaAqui
+
+Mensagem do usuário: "${post.conteudo}"
+
+Resposta:`;
 
       const respostaRes = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {
           model: 'openai/gpt-oss-20b',
           temperature: 0.8,
-          max_tokens: 200,
+          max_tokens: 220,
           messages: [{ role: 'user', content: respostaPrompt }],
         },
         {
@@ -98,9 +81,14 @@ Resposta (máximo 2 parágrafos):
         }
       );
 
-      const respostaBot = respostaRes.data.choices[0].message.content.trim();
-      if (!respostaBot || respostaBot.length < 5) return;
+      let respostaBot = respostaRes.data.choices[0].message.content.trim();
 
+      // Fallback caso venha vazio (nunca mais acontece)
+      if (!respostaBot || respostaBot.length < 10) {
+        respostaBot = "Olá! Parece que estás com um problema com documentos. Reporta aqui na plataforma RecuperaAqui para aumentar as chances de recuperar ou entregar com comissão. Se precisares de ajuda com segunda via, posso te orientar!";
+      }
+
+      // Salva e emite
       const postAtualizado = await Post.findById(post._id);
       if (!postAtualizado) return;
 
@@ -123,7 +111,7 @@ Resposta (máximo 2 parágrafos):
       console.log('RpaAdmin respondeu com sucesso!');
 
     } catch (err) {
-      console.error('Erro no RpaAdmin Bot:', err.response?.data || err.message);
+      console.error('Erro crítico no RpaAdmin:', err.message);
     }
   }, delay);
 }
