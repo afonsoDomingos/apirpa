@@ -12,25 +12,22 @@ const RPA_BOT_ID = "685bff7d1b6abc16c490af52";
 // FUNÇÃO: RpaAdmin Bot (responde automaticamente)
 // ====================================================
 // SUBSTITUI TODA A FUNÇÃO ativarRpaBot POR ESTA (mais inteligente)
+// ====================================================
+// FUNÇÃO: RpaAdmin Bot (VERSÃO FINAL 100% FUNCIONAL)
+// ====================================================
 async function ativarRpaBot(post, req) {
   if (post.autor && post.autor._id === RPA_BOT_ID) return;
 
   const delay = 4000 + Math.random() * 4000;
   setTimeout(async () => {
     try {
-      // CLASSIFICAÇÃO MAIS INTELIGENTE E PERMISSIVA
       const classificacaoPrompt = `
-Analisa o post abaixo da comunidade RecuperaAqui (Perdidos e Achados de documentos).
+Analisa o post da comunidade RecuperaAqui (Perdidos e Achados de documentos).
 
-Responde APENAS com:
-PERGUNTA_VALIDA → se for qualquer dúvida, pedido de ajuda ou informação sobre documentos perdidos, achados, emissão, recuperação, guarda ou uso da plataforma
-FORA_DO_TEMA → apenas se for saudação, piada, propaganda, política, ofensa ou conversa totalmente aleatória
+Responde APENAS com uma das duas palavras:
 
-Exemplos de PERGUNTA_VALIDA:
-- "Perdi meu BI"
-- "O que faço se encontrei um documento?"
-- "Como tiro 2ª via?"
-- "Alguém achou meu cartão?"
+PERGUNTA_VALIDA → se for qualquer dúvida sobre documentos perdidos, achados, emissão, recuperação ou uso da plataforma
+FORA_DO_TEMA → saudação, piada, propaganda, ofensa, conversa aleatória
 
 Post: "${post.conteudo}"
 
@@ -42,7 +39,7 @@ Resposta (só uma das duas palavras):
         {
           model: 'openai/gpt-oss-20b',
           temperature: 0,
-          max_tokens: 15,
+          max_tokens: 10,
           messages: [{ role: 'user', content: classificacaoPrompt }],
         },
         {
@@ -52,25 +49,30 @@ Resposta (só uma das duas palavras):
             'HTTP-Referer': process.env.APP_BASE_URL || 'https://recuperaaqui.vercel.app',
             'X-Title': 'RpaAdmin',
           },
+          timeout: 15000,
         }
       );
 
-      const decisao = classificacaoRes.data.choices[0].message.content.trim();
+      const classificacaoRaw = classificacaoRes.data.choices[0].message.content.trim();
+      console.log('Classificador devolveu →', classificacaoRaw); // ← Vais ver exatamente o que o modelo respondeu
 
-      if (!decisao.includes('PERGUNTA_VALIDA')) {
-        console.log(`RpaAdmin ignorou: "${post.conteudo}" → ${decisao}`);
+      // ACEITA QUALQUER VARIAÇÃO (maiúsculas, pontos, espaços...)
+      const ehValida = classificacaoRaw
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .includes('PERGUNTAVALIDA');
+
+      if (!ehValida) {
+        console.log(`RpaAdmin ignorou (fora do tema): "${post.conteudo}"`);
         return;
       }
 
-      console.log(`RpaAdmin vai responder: "${post.conteudo}"`);
+      console.log(`RpaAdmin VAI RESPONDER → "${post.conteudo}"`);
 
-      // RESPOSTA AMIGÁVEL E ÚTIL
+      // GERA RESPOSTA ÚTIL
       const respostaPrompt = `
-Você é o RpaAdmin, assistente da comunidade RecuperaAqui.
-
-Responda em português de Moçambique, de forma curta, educada e útil.
-Se for sobre documento perdido: orienta a reportar na plataforma + onde tirar 2ª via.
-Se for sobre documento encontrado: explica como reportar e ganhar comissão.
+Você é o RpaAdmin, assistente oficial da comunidade RecuperaAqui.
+Responde em português de Moçambique, curto, educado e útil.
 
 Pergunta: "${post.conteudo}"
 
@@ -92,11 +94,12 @@ Resposta (máximo 2 parágrafos):
             'HTTP-Referer': process.env.APP_BASE_URL || 'https://recuperaaqui.vercel.app',
             'X-Title': 'RpaAdmin Bot',
           },
+          timeout: 15000,
         }
       );
 
-      let respostaBot = respostaRes.data.choices[0].message.content.trim();
-      if (!respostaBot) return;
+      const respostaBot = respostaRes.data.choices[0].message.content.trim();
+      if (!respostaBot || respostaBot.length < 5) return;
 
       const postAtualizado = await Post.findById(post._id);
       if (!postAtualizado) return;
@@ -117,10 +120,10 @@ Resposta (máximo 2 parágrafos):
         });
       }
 
-      console.log(`RpaAdmin respondeu com sucesso!`);
+      console.log('RpaAdmin respondeu com sucesso!');
 
     } catch (err) {
-      console.error('Erro no RpaAdmin Bot:', err.message);
+      console.error('Erro no RpaAdmin Bot:', err.response?.data || err.message);
     }
   }, delay);
 }
