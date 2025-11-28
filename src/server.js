@@ -20,6 +20,8 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 
+
+
 const webhookMpesa = require('./routes/webhookMpesa');
 
 // Meta CAPI
@@ -163,6 +165,8 @@ app.use('/uploads', express.static('uploads'));
 
 
 app.use('/webhook', webhookMpesa);  // ← URL que você vai colocar no portal da Vodacom
+
+app.use('/api/talentos', require('./routes/talentosRoutes'));
 
 
 /* ===============================
