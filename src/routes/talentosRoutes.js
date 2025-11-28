@@ -29,7 +29,16 @@ const upload = multer({
 });
 
 // ROTAS
-router.post('/submeter', verificarToken, upload.single('foto'), submeterTalento);
+
+router.post('/submeter', 
+  verificarToken, 
+  (req, res, next) => {
+    express.urlencoded({ extended: true })(req, res, next); // força o parser
+  },
+  upload.single('foto'), 
+  submeterTalento
+);
+
 
 router.get('/lista', listarTalentos);
 

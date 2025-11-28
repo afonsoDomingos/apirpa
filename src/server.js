@@ -144,7 +144,8 @@ console.log("\n🛣️ Registrando rotas da API...");
 
 
 
-
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // ← ESSA LINHA É OBRIGATÓRIA
+app.use(express.json({ limit: '10mb' })); // ← ESSA LINHA É OBRIGATÓRIA
 app.get('/', (req, res) => res.send('API rodando com sucesso!'));
 
 app.use('/api/chatbot', chatbotRoutes);
