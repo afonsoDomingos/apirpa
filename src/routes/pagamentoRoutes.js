@@ -8,7 +8,7 @@ const Gateway = require('../services/gateway');
 const mongoose = require('mongoose');
 
 // === PREÇOS FIXOS (em MZN) ===
-const PRECO_TESTE = 25;
+const PRECO_TESTE = 0;
 const PRECO_MENSAL = 150;
 const PRECO_ANUAL = 1500;
 const PRECO_POR_SEMANA = 500;
@@ -183,7 +183,7 @@ router.post('/processar', verificarToken, async (req, res) => {
     // PLANO TESTE GRÁTIS
     if (pacote.toLowerCase() === 'teste') {
       const pagamento = new Pagamento({
-        usuarioId, pacote: 'teste', metodoPagamento: 'teste', valor: 25, telefone: null,
+        usuarioId, pacote: 'teste', metodoPagamento: 'teste', valor: PRECO_TESTE, telefone: null,
         status: 'aprovado', tipoPagamento: 'assinatura', dataPagamento: new Date(),
         gatewayResponse: { message: 'Plano de teste ativado (5 dias)' }, referencia: referenciaUnica
       });
