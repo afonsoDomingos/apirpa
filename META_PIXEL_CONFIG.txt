@@ -1,0 +1,5 @@
+# Meta Pixel / Facebook Conversions API Configuration
+# Add these variables to Render Environment Variables
+
+META_PIXEL_ID=1265895278678340
+META_ACCESS_TOKEN=EAAV724cEmmgBP6uVCd8mzjSIE6MaZA9y9ZCIMZCpU4KOhikUtCBZAv1ZCq5GG7Dl1B4jSZBd1B1JhDRd9iapnzALkV5t8Trb8LZAwIvKCrJ8cp4wV3dzqOEqYaRUMZAVFiBzJcbk1VKusiZAMLqzocubjWoZAex310c7rWwqq8HHWzT70IuyaBQnlxLw4f66UtWkPx3wZDZD

@@ -5,14 +5,18 @@ const axios = require('axios');
 // ===============================
 // CONFIGURAÇÃO DO PIXEL
 // ===============================
-const PIXEL_ID = '1265895278678340';
+const PIXEL_ID = process.env.META_PIXEL_ID;
+const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 
-// ⚠️ IMPORTANTE:
-// Coloque teu token real aqui.
-// Nunca deixar em apps públicos.
-const ACCESS_TOKEN = 'EAAV724cEmmgBP6uVCd8mzjSIE6MaZA9y9ZCIMZCpU4KOhikUtCBZAv1ZCq5GG7Dl1B4jSZBd1B1JhDRd9iapnzALkV5t8Trb8LZAwIvKCrJ8cp4wV3dzqOEqYaRUMZAVFiBzJcbk1VKusiZAMLqzocubjWoZAex310c7rWwqq8HHWzT70IuyaBQnlxLw4f66UtWkPx3wZDZD';
-
-console.log("🔵 Meta CAPI carregado (metaConversions.js)");
+// Validação de credenciais
+if (!PIXEL_ID || !ACCESS_TOKEN) {
+  console.error('❌ ERRO CRÍTICO: META_PIXEL_ID ou META_ACCESS_TOKEN não configurados!');
+  console.error('Configure essas variáveis no arquivo .env ou no painel do Render.');
+} else {
+  console.log("🔵 Meta CAPI carregado (metaConversions.js)");
+  console.log(`✓ Pixel ID: ${PIXEL_ID}`);
+  console.log(`✓ Access Token: ${ACCESS_TOKEN ? ACCESS_TOKEN.substring(0, 20) + '...' : 'AUSENTE'}`);
+}
 
 // ===============================
 // FUNÇÃO DE HASH — REQUERIDO
@@ -27,7 +31,7 @@ const hash = (data) => {
 // FUNÇÃO PRINCIPAL DE ENVIO CAPI
 // ===============================
 const sendConversionEvent = async (eventName, eventData = {}, userData = {}, eventId) => {
-  
+
   if (!eventId) {
     console.warn("⚠️ CAPI BLOQ → eventId ausente (necessário para deduplicação)");
     return;
@@ -72,6 +76,11 @@ const sendConversionEvent = async (eventName, eventData = {}, userData = {}, eve
   // ENVIO PARA O FACEBOOK
   // ===============================
   try {
+    if (!PIXEL_ID || !ACCESS_TOKEN) {
+      console.error('❌ CAPI BLOQUEADO: Credenciais não configuradas');
+      return { error: 'Meta credentials not configured' };
+    }
+
     console.log("⏳ Enviando evento para Meta...");
 
     const response = await axios.post(
@@ -80,12 +89,35 @@ const sendConversionEvent = async (eventName, eventData = {}, userData = {}, eve
       { timeout: 8000 }
     );
 
-    console.log(`✅ CAPI ENVIADO: ${eventName} (${eventData.value || 0} MZN)`);
-    return response.data;
+    // Validar resposta do Facebook
+    if (response.data.events_received === 1) {
+      console.log(`✅ CAPI ENVIADO: ${eventName} (${eventData.value || 0} MZN)`);
+      console.log(`   Match Score: ${response.data.fbtrace_id || 'N/A'}`);
+      return response.data;
+    } else {
+      console.warn(`⚠️ CAPI PARCIAL: Evento enviado mas não confirmado`);
+      return response.data;
+    }
 
   } catch (error) {
     console.error("❌ ERRO AO ENVIAR CAPI:");
-    console.error(error.response?.data || error.message);
+
+    if (error.response) {
+      // Erro da API do Facebook
+      console.error(`   Status: ${error.response.status}`);
+      console.error(`   Mensagem:`, error.response.data);
+
+      // Erros comuns
+      if (error.response.status === 400) {
+        console.error('   → Verifique se o Pixel ID e Access Token estão corretos');
+      } else if (error.response.status === 401) {
+        console.error('   → Access Token expirado ou inválido');
+      }
+    } else {
+      console.error(error.message);
+    }
+
+    return { error: error.message };
   }
 };
 
