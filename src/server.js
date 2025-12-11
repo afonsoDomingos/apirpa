@@ -54,6 +54,8 @@ console.log("🔵 Meta CAPI inicializado.\n");
 // ⚠️ CRÍTICO: Webhook do Stripe DEVE vir ANTES de qualquer body parser
 // A rota precisa do body RAW (Buffer) para validar a assinatura criptográfica
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const webhookNotifier = require('./services/webhookNotifier');
+
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
 
@@ -97,6 +99,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
       try {
         const Pagamento = require('./models/pagamentoModel');
         const Anuncio = require('./models/Anuncio');
+        const Usuario = require('./models/Usuario');
 
         const pagamento = new Pagamento({
           usuarioId,
@@ -114,18 +117,35 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
         await pagamento.save();
         console.log('✅ Pagamento salvo no banco! ID:', pagamento._id);
 
+        let anuncioNome = null;
         if (type === 'anuncio' && anuncioId) {
           const weeksNum = parseInt(weeks) || 1;
           const expiracao = new Date(Date.now() + weeksNum * 7 * 24 * 60 * 60 * 1000);
 
-          await Anuncio.findByIdAndUpdate(anuncioId, {
+          const anuncio = await Anuncio.findByIdAndUpdate(anuncioId, {
             status: 'active',
             dataAtivacao: new Date(),
             dataExpiracao: expiracao,
-          });
+          }, { new: true });
 
+          anuncioNome = anuncio?.name;
           console.log(`✅ Anúncio ${anuncioId} ativado por ${weeksNum} semana(s)`);
         }
+
+        // 🔔 ENVIAR NOTIFICAÇÕES WEBHOOK
+        const usuario = await Usuario.findById(usuarioId);
+        await webhookNotifier.sendWebhookNotification(usuarioId, 'payment.approved', {
+          pagamentoId: pagamento._id.toString(),
+          usuarioNome: usuario?.nome,
+          usuarioEmail: usuario?.email,
+          valor: pagamento.valor,
+          pacote: pagamento.pacote,
+          metodoPagamento: pagamento.metodoPagamento,
+          tipoPagamento: pagamento.tipoPagamento,
+          dataPagamento: pagamento.dataPagamento,
+          referencia: pagamento.referencia,
+          anuncioNome
+        });
 
       } catch (error) {
         console.error('❌ ERRO ao salvar no banco:', error.message);
@@ -193,6 +213,7 @@ io.on('connection', (socket) => {
 });
 
 app.set('io', io);
+global.io = io; // Disponibilizar io globalmente para webhookNotifier
 
 /* ===============================
     ROTA: FACEBOOK CONVERSIONS API
@@ -237,6 +258,7 @@ console.log("\n🛣️ Registrando rotas da API...");
 // ⚠️ IMPORTANTE: Stripe webhook PRECISA vir ANTES do express.json()
 // para receber o body em formato RAW (necessário para validar assinatura)
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/webhooks', require('./routes/webhookRoutes'));
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // ← ESSA LINHA É OBRIGATÓRIA
 app.use(express.json({ limit: '10mb' })); // ← ESSA LINHA É OBRIGATÓRIA

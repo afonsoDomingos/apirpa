@@ -3,7 +3,9 @@ const express = require('express');
 const router = express.Router();
 const Pagamento = require('../models/pagamentoModel');
 const Anuncio = require('../models/Anuncio');
-const Talento = require('../models/Talento'); // ← IMPORTA O MODELO
+const Talento = require('../models/Talento');
+const Usuario = require('../models/Usuario');
+const webhookNotifier = require('../services/webhookNotifier');
 
 router.post('/mpesa', async (req, res) => {
   console.log('[WEBHOOK MPESA] Recebido:', JSON.stringify(req.body, null, 2));
@@ -23,7 +25,7 @@ router.post('/mpesa', async (req, res) => {
     // ====== 1. ANÚNCIOS (o teu código original) ======
     const pagamento = await Pagamento.findOne({
       'gatewayResponse.reference': output_ThirdPartyReference
-    }).populate('anuncioId');
+    }).populate('anuncioId').populate('usuarioId');
 
     if (pagamento) {
       if (pagamento.status === 'aprovado' || pagamento.status === 'falhou') {
@@ -36,6 +38,7 @@ router.post('/mpesa', async (req, res) => {
         pagamento.gatewayResponse.transactionId = output_ConversationID;
         await pagamento.save();
 
+        let anuncioNome = null;
         if (pagamento.anuncioId) {
           const weeks = pagamento.anuncioId.weeks || 1;
           await Anuncio.findByIdAndUpdate(pagamento.anuncioId, {
@@ -43,8 +46,24 @@ router.post('/mpesa', async (req, res) => {
             dataAtivacao: new Date(),
             dataExpiracao: new Date(Date.now() + weeks * 7 * 24 * 60 * 60 * 1000)
           });
+          anuncioNome = pagamento.anuncioId.name;
           console.log(`[WEBHOOK] ANÚNCIO ATIVADO → ${output_ThirdPartyReference}`);
         }
+
+        // 🔔 ENVIAR NOTIFICAÇÕES WEBHOOK
+        await webhookNotifier.sendWebhookNotification(pagamento.usuarioId._id, 'payment.approved', {
+          pagamentoId: pagamento._id.toString(),
+          usuarioNome: pagamento.usuarioId?.nome,
+          usuarioEmail: pagamento.usuarioId?.email,
+          valor: pagamento.valor,
+          pacote: pagamento.pacote,
+          metodoPagamento: pagamento.metodoPagamento,
+          tipoPagamento: pagamento.tipoPagamento,
+          dataPagamento: pagamento.dataPagamento,
+          referencia: pagamento.referencia,
+          anuncioNome
+        });
+
       } else {
         pagamento.status = 'falhou';
         await pagamento.save();
