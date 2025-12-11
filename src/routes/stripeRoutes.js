@@ -96,12 +96,12 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
         const pagamento = new Pagamento({
           usuarioId,
-          pacote: pacote || 'cartao',
+          pacote: pacote || (type === 'anuncio' ? 'anuncio' : 'mensal'),
           metodoPagamento: 'card',
           valor: parseInt(amount_mzn) || pi.amount,
           telefone: null,
           status: 'aprovado',
-          tipoPagamento: type || 'pacote',
+          tipoPagamento: type || 'assinatura',
           dataPagamento: new Date(),
           gatewayResponse: { paymentIntent: pi.id, stripeEvent: event.id },
           referencia: pi.id,
