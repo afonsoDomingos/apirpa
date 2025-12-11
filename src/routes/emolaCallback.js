@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Pagamento = require('../models/pagamentoModel');
-const Usuario = require('../models/Usuario');
+const Usuario = require('../models/usuarioModel');
 const webhookNotifier = require('../services/webhookNotifier');
 
 router.post('/callback', async (req, res) => {

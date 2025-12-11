@@ -99,7 +99,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
       try {
         const Pagamento = require('./models/pagamentoModel');
         const Anuncio = require('./models/Anuncio');
-        const Usuario = require('./models/Usuario');
+        const Usuario = require('./models/usuarioModel');
 
         const pagamento = new Pagamento({
           usuarioId,

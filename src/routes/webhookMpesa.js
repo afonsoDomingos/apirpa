@@ -4,7 +4,7 @@ const router = express.Router();
 const Pagamento = require('../models/pagamentoModel');
 const Anuncio = require('../models/Anuncio');
 const Talento = require('../models/Talento');
-const Usuario = require('../models/Usuario');
+const Usuario = require('../models/usuarioModel');
 const webhookNotifier = require('../services/webhookNotifier');
 
 router.post('/mpesa', async (req, res) => {
