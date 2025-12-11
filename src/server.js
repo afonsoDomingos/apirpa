@@ -142,7 +142,9 @@ app.post('/api/facebook/conversion', async (req, res) => {
 =================================*/
 console.log("\n🛣️ Registrando rotas da API...");
 
-
+// ⚠️ IMPORTANTE: Stripe webhook PRECISA vir ANTES do express.json()
+// para receber o body em formato RAW (necessário para validar assinatura)
+app.use('/api/stripe', stripeRoutes);
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // ← ESSA LINHA É OBRIGATÓRIA
 app.use(express.json({ limit: '10mb' })); // ← ESSA LINHA É OBRIGATÓRIA
@@ -159,8 +161,6 @@ app.use('/api/posts', postsRoutes);
 app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
 app.use('/api/anuncios', anunciosRouter);
-
-app.use('/api/stripe', stripeRoutes);
 
 app.use('/uploads', express.static('uploads'));
 
