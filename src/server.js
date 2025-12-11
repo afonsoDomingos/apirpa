@@ -50,6 +50,98 @@ console.log("🔵 Meta CAPI inicializado.\n");
 /* ===============================
              MIDDLEWARES
 =================================*/
+
+// ⚠️ CRÍTICO: Webhook do Stripe DEVE vir ANTES de qualquer body parser
+// A rota precisa do body RAW (Buffer) para validar a assinatura criptográfica
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+
+  console.log('');
+  console.log('════════════════════════════════════════════════');
+  console.log(' WEBHOOK STRIPE RECEBIDO');
+  console.log('════════════════════════════════════════════════');
+  console.log('Timestamp:', new Date().toLocaleString('pt-MZ'));
+  console.log('Signature:', sig ? 'presente' : 'AUSENTE!');
+  console.log('Body type:', typeof req.body, '| isBuffer:', Buffer.isBuffer(req.body));
+  console.log('────────────────────────────────────────────────');
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+
+    console.log('✓ Webhook verificado com sucesso!');
+    console.log('Event ID:', event.id);
+    console.log('Event Type:', event.type);
+
+    if (event.type === 'payment_intent.succeeded') {
+      const pi = event.data.object;
+      const metadata = pi.metadata;
+
+      console.log(' PAYMENT_INTENT.SUCCEEDED');
+      console.log('   PaymentIntent ID:', pi.id);
+      console.log('   Amount:', pi.amount, '(', pi.currency.toUpperCase(), ')');
+      console.log('   Metadata:', metadata);
+
+      const { usuarioId, pacote, type, amount_mzn, anuncioId, weeks } = metadata;
+
+      if (!usuarioId) {
+        console.error('ERRO: usuarioId não encontrado na metadata!');
+        return res.json({ received: true });
+      }
+
+      try {
+        const Pagamento = require('./models/pagamentoModel');
+        const Anuncio = require('./models/Anuncio');
+
+        const pagamento = new Pagamento({
+          usuarioId,
+          pacote: pacote || (type === 'anuncio' ? 'anuncio' : 'mensal'),
+          metodoPagamento: 'card',
+          valor: parseInt(amount_mzn) || pi.amount,
+          telefone: null,
+          status: 'aprovado',
+          tipoPagamento: type || 'assinatura',
+          dataPagamento: new Date(),
+          gatewayResponse: { paymentIntent: pi.id, stripeEvent: event.id },
+          referencia: pi.id,
+        });
+
+        await pagamento.save();
+        console.log('✅ Pagamento salvo no banco! ID:', pagamento._id);
+
+        if (type === 'anuncio' && anuncioId) {
+          const weeksNum = parseInt(weeks) || 1;
+          const expiracao = new Date(Date.now() + weeksNum * 7 * 24 * 60 * 60 * 1000);
+
+          await Anuncio.findByIdAndUpdate(anuncioId, {
+            status: 'active',
+            dataAtivacao: new Date(),
+            dataExpiracao: expiracao,
+          });
+
+          console.log(`✅ Anúncio ${anuncioId} ativado por ${weeksNum} semana(s)`);
+        }
+
+      } catch (error) {
+        console.error('❌ ERRO ao salvar no banco:', error.message);
+      }
+    }
+
+  } catch (err) {
+    console.error('❌ Webhook signature verification FAILED!');
+    console.error('Erro:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  console.log('════════════════════════════════════════════════\n');
+  res.json({ received: true });
+});
+
 app.use(express.json());
 
 /* ===============================
