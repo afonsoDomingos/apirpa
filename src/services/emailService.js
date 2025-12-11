@@ -14,8 +14,16 @@ class EmailService {
       return;
     }
 
+    // LOG: Mostrar configuração atual
+    console.log('\n🔧 CONFIGURAÇÃO SMTP:');
+    console.log(`   SMTP_HOST: ${process.env.SMTP_HOST || 'não definido'}`);
+    console.log(`   SMTP_USER: ${process.env.SMTP_USER}`);
+    console.log(`   SMTP_PASS: ${process.env.SMTP_PASS ? '***configurada***' : 'não definida'}`);
+    console.log(`   ADMIN_EMAIL: ${process.env.ADMIN_EMAIL || 'não definido'}`);
+
     // Detectar se está usando SendGrid
     const isSendGrid = process.env.SMTP_HOST?.includes('sendgrid') || process.env.SMTP_USER === 'apikey';
+    console.log(`   Detectado: ${isSendGrid ? 'SENDGRID' : 'GMAIL'}\n`);
 
     if (isSendGrid) {
       // Configuração SendGrid
