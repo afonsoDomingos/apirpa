@@ -14,17 +14,43 @@ class EmailService {
       return;
     }
 
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true', // true para porta 465, false para outras
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
+    // Detectar se está usando SendGrid
+    const isSendGrid = process.env.SMTP_HOST?.includes('sendgrid') || process.env.SMTP_USER === 'apikey';
 
-    console.log('✅ Email service inicializado com sucesso');
+    if (isSendGrid) {
+      // Configuração SendGrid
+      this.transporter = nodemailer.createTransport({
+        host: 'smtp.sendgrid.net',
+        port: 587,
+        secure: false,
+        auth: {
+          user: 'apikey',
+          pass: process.env.SMTP_PASS // SendGrid API Key
+        }
+      });
+      console.log('✅ Email service inicializado com SendGrid');
+    } else {
+      // Configuração Gmail com timeouts aumentados
+      this.transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: parseInt(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        },
+        pool: true,
+        maxConnections: 5,
+        connectionTimeout: 60000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000,
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2'
+        }
+      });
+      console.log('✅ Email service inicializado com Gmail');
+    }
   }
 
   /**
