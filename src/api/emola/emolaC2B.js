@@ -1,4 +1,5 @@
 const soap = require('soap');
+const https = require('https');
 const config = require('./config');
 
 class EmolaC2B {
@@ -8,7 +9,19 @@ class EmolaC2B {
 
     try {
       const url = config.wsdl;
-      const client = await soap.createClientAsync(url);
+
+      // Configuração para aceitar certificados SSL antigos/auto-assinados
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false, // Aceita certificados inválidos
+        secureOptions: require('constants').SSL_OP_LEGACY_SERVER_CONNECT
+      });
+
+      const client = await soap.createClientAsync(url, {
+        request: require('axios').create({
+          httpsAgent,
+          timeout: 30000
+        })
+      });
 
       const args = {
         Input: {
