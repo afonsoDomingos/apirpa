@@ -245,11 +245,12 @@ router.delete('/:postId', verificarToken, async (req, res) => {
     const post = await Post.findById(postId);
     if (!post) return res.status(404).json({ message: 'Post não encontrado' });
 
-    if (post.autor.toString() !== req.usuario.id.toString()) {
+    // Permite excluir se for o autor OU se for admin
+    if (post.autor.toString() !== req.usuario.id.toString() && req.usuario.role !== 'admin') {
       return res.status(403).json({ message: 'Sem permissão para deletar este post' });
     }
 
-    await post.remove();
+    await Post.deleteOne({ _id: post._id });
 
     const io = req.app.get('io');
     if (io) io.emit('postDeletado', { postId });
