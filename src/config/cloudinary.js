@@ -27,10 +27,20 @@ const storageAnuncios = new CloudinaryStorage({
   },
 });
 
-console.log('Storages criados: rpa_noticias e rpa_anuncios');
+// === PASTA: POSTS (NOVO) ===
+const storagePosts = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'rpa_posts',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+  },
+});
 
-module.exports = { 
-  cloudinary, 
-  storageNoticias, 
-  storageAnuncios 
+console.log('Storages criados: rpa_noticias, rpa_anuncios e rpa_posts');
+
+module.exports = {
+  cloudinary,
+  storageNoticias,
+  storageAnuncios,
+  storagePosts
 };

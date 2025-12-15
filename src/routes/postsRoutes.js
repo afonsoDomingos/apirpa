@@ -4,6 +4,20 @@ const router = express.Router();
 const Post = require('../models/postModel');
 const verificarToken = require('../middleware/authMiddleware');
 const axios = require('axios');
+const multer = require('multer');
+const { storagePosts } = require('../config/cloudinary');
+
+const upload = multer({
+  storage: storagePosts,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Formato de arquivo inválido. Apenas imagens são permitidas.'));
+    }
+  }
+});
 
 // ID do usuário RpaAdmin (já existente no seu MongoDB)
 const RPA_BOT_ID = "685bff7d1b6abc16c490af52";
@@ -135,14 +149,27 @@ router.get('/', async (req, res) => {
 });
 
 // Criar post + ATIVA RPA BOT
-router.post('/', verificarToken, async (req, res) => {
+// Criar post + ATIVA RPA BOT
+router.post('/', verificarToken, upload.single('imagem'), async (req, res) => {
   try {
     const { conteudo } = req.body;
+
+    // Validar se tem conteúdo (obrigatório pelo Model)
+    // Se quiser permitir post só com imagem, teria que mudar o Model para conteudo: { required: false }
     if (!conteudo || !conteudo.trim()) {
       return res.status(400).json({ message: 'Conteúdo do post é obrigatório' });
     }
 
-    const post = new Post({ autor: req.usuario.id, conteudo });
+    const novoPostData = {
+      autor: req.usuario.id,
+      conteudo
+    };
+
+    if (req.file && req.file.path) {
+      novoPostData.imagem = req.file.path;
+    }
+
+    const post = new Post(novoPostData);
     await post.save();
     const populatedPost = await post.populate('autor', 'nome initials role');
 
