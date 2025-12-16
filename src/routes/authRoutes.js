@@ -15,7 +15,7 @@ console.log("✅ GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
 // Função utilitária para gerar JWT
 function gerarTokenJWT(payload, expiresIn = '7d') {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
-  
+
 }
 
 // =======================
@@ -180,9 +180,29 @@ router.post('/google', async (req, res) => {
 });
 
 // =======================
-// Obter usuários (todos ou por role)
+// Dados do usuário logado (ME)
 // =======================
-router.get('/usuarios', async (req, res) => {
+router.get('/me', verificarToken, async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.usuario.id).select('-senha');
+    if (!usuario) {
+      return res.status(404).json({ msg: 'Usuário não encontrado' });
+    }
+    res.json(usuario);
+  } catch (err) {
+    console.error("❌ GET /me - Erro:", err);
+    res.status(500).json({ msg: 'Erro ao buscar perfil', erro: err.message });
+  }
+});
+
+// =======================
+// Obter usuários (ADMIN ONLY)
+// =======================
+router.get('/usuarios', verificarToken, async (req, res) => {
+  if (req.usuario.role !== 'admin') {
+    return res.status(403).json({ msg: 'Acesso negado: apenas admin' });
+  }
+
   try {
     const { role } = req.query;
     const filtro = role ? { role } : {};
