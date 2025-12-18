@@ -151,12 +151,14 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
         }).catch(err => console.error('Erro webhook background:', err));
 
         notificarAdmin({
-          title: 'Novo Pagamento Recebido! 💰',
-          body: `${usuario?.nome || 'Um usuário'} acabou de pagar ${pagamento.valor} MZN via Cartão.`,
+          title: 'Pagamento Recebido 💰',
+          body: `${usuario?.nome || 'Usuário'} pagou ${pagamento.valor.toFixed(2)} MZN para ${pagamento.tipoPagamento === 'assinatura' ? 'Assinatura' : 'Anúncio'} (Cartão).`,
           icon: '/icon.png',
           data: {
             url: '/admin/pagamentos',
-            pagamentoId: pagamento._id
+            pagamentoId: pagamento._id,
+            valor: pagamento.valor,
+            usuario: usuario?.nome
           }
         }).catch(err => console.error('Erro push background:', err));
 

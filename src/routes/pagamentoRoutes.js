@@ -113,9 +113,9 @@ router.post('/processar', verificarToken, async (req, res) => {
         // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
         Usuario.findById(usuarioId).then(user => {
           notificarAdmin({
-            title: 'Pagamento de Teste (Anúncio) 🧪',
-            body: `${user?.nome || 'Usuário'} ativou um anúncio via Teste.`,
-            data: { url: '/admin/pagamentos' }
+            title: 'Pagamento Recebido 💰',
+            body: `${user?.nome || 'Usuário'} pagou ${amount.toFixed(2)} MZN para Anúncio (Teste).`,
+            data: { url: '/admin/pagamentos', valor: amount, usuario: user?.nome }
           }).catch(err => console.error('Erro push background:', err));
         });
 
@@ -160,9 +160,9 @@ router.post('/processar', verificarToken, async (req, res) => {
         // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
         Usuario.findById(usuarioId).then(user => {
           notificarAdmin({
-            title: 'Novo Anúncio (Sandbox) 📢',
-            body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
-            data: { url: '/admin/pagamentos' }
+            title: 'Pagamento Recebido 💰',
+            body: `${user?.nome || 'Usuário'} pagou ${amount.toFixed(2)} MZN para Anúncio (${method}).`,
+            data: { url: '/admin/pagamentos', valor: amount, usuario: user?.nome }
           }).catch(err => console.error('Erro push background:', err));
         });
 
@@ -212,9 +212,9 @@ router.post('/processar', verificarToken, async (req, res) => {
       // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
       Usuario.findById(usuarioId).then(user => {
         notificarAdmin({
-          title: 'Assinatura de Teste 🧪',
-          body: `${user?.nome || 'Usuário'} ativou plano Teste.`,
-          data: { url: '/admin/pagamentos' }
+          title: 'Pagamento Recebido 💰',
+          body: `${user?.nome || 'Usuário'} pagou ${PRECO_TESTE.toFixed(2)} MZN para Assinatura (Teste).`,
+          data: { url: '/admin/pagamentos', valor: PRECO_TESTE, usuario: user?.nome }
         }).catch(err => console.error('Erro push background:', err));
       });
 
@@ -252,9 +252,9 @@ router.post('/processar', verificarToken, async (req, res) => {
       // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
       Usuario.findById(usuarioId).then(user => {
         notificarAdmin({
-          title: 'Nova Assinatura (Sandbox) ✨',
-          body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
-          data: { url: '/admin/pagamentos' }
+          title: 'Pagamento Recebido 💰',
+          body: `${user?.nome || 'Usuário'} pagou ${amount.toFixed(2)} MZN para Assinatura (${method}).`,
+          data: { url: '/admin/pagamentos', valor: amount, usuario: user?.nome }
         }).catch(err => console.error('Erro push background:', err));
       });
 
