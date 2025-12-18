@@ -1,40 +1,58 @@
 const webPush = require('web-push');
 const PushSubscription = require('../models/pushSubscriptionModel');
 
-// Configuração das chaves VAPID
-webPush.setVapidDetails(
-    'mailto:admin@rpa.co.mz', // Substituir pelo email real do admin se necessário
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-);
+// 🔐 Configuração do Push Server (VAPID)
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+
+if (!vapidPublicKey || !vapidPrivateKey) {
+    console.warn('⚠️ [PUSH SERVER] Chaves VAPID ausentes no .env. Notificações Push desativadas.');
+} else {
+    webPush.setVapidDetails(
+        'mailto:suporte@recuperaaqui.co.mz',
+        vapidPublicKey,
+        vapidPrivateKey
+    );
+}
 
 /**
- * Envia uma notificação push para todos os administradores subscritos.
- * @param {Object} payload - O conteúdo da notificação (title, body, etc)
+ * Envia uma notificação push genérica
+ * @param {Object} subscription - Objeto de subscrição do navegador
+ * @param {Object} payload - Dados da notificação (title, body, icon, data)
+ */
+async function sendPush(subscription, payload) {
+    try {
+        await webPush.sendNotification(subscription, JSON.stringify({
+            ...payload,
+            badge: '/badge-icon.png',
+            vibrate: [100, 50, 100]
+        }));
+        return { success: true };
+    } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
+            console.log('🗑️ [PUSH] Subscrição expirada ou inválida, removendo...');
+            await PushSubscription.deleteOne({ 'subscription.endpoint': subscription.endpoint });
+        } else {
+            console.error('❌ [PUSH] Erro ao enviar notificação:', error.message);
+        }
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Notifica todos os administradores (Tempo Real)
  */
 async function notificarAdmin(payload) {
     try {
         const adminSubscriptions = await PushSubscription.find({ isAdmin: true });
 
-        console.log(`Enviando notificações push para ${adminSubscriptions.length} administradores.`);
+        console.log(`🚀 [PUSH] Enviando notificações para ${adminSubscriptions.length} administradores.`);
 
-        const notificationPromises = adminSubscriptions.map(sub => {
-            return webPush.sendNotification(
-                sub.subscription,
-                JSON.stringify(payload)
-            ).catch(err => {
-                if (err.statusCode === 404 || err.statusCode === 410) {
-                    console.log('Subscrição expirada ou inválida, removendo...');
-                    return PushSubscription.deleteOne({ _id: sub._id });
-                }
-                console.error('Erro ao enviar notificação push:', err);
-            });
-        });
-
-        await Promise.all(notificationPromises);
+        const notificationPromises = adminSubscriptions.map(sub => sendPush(sub.subscription, payload));
+        await Promise.allSettled(notificationPromises);
     } catch (error) {
-        console.error('Erro no serviço de notificação admin:', error);
+        console.error('❌ [PUSH] Erro no serviço de notificação admin:', error);
     }
 }
 
-module.exports = { notificarAdmin };
+module.exports = { notificarAdmin, sendPush };
