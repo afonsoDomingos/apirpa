@@ -110,12 +110,13 @@ router.post('/processar', verificarToken, async (req, res) => {
         });
         await pagamento.save();
 
-        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
-        const user = await Usuario.findById(usuarioId);
-        await notificarAdmin({
-          title: 'Pagamento de Teste (Anúncio) 🧪',
-          body: `${user?.nome || 'Usuário'} ativou um anúncio via Teste.`,
-          data: { url: '/admin/pagamentos' }
+        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
+        Usuario.findById(usuarioId).then(user => {
+          notificarAdmin({
+            title: 'Pagamento de Teste (Anúncio) 🧪',
+            body: `${user?.nome || 'Usuário'} ativou um anúncio via Teste.`,
+            data: { url: '/admin/pagamentos' }
+          }).catch(err => console.error('Erro push background:', err));
         });
 
         return res.status(201).json({
@@ -156,12 +157,13 @@ router.post('/processar', verificarToken, async (req, res) => {
         anuncio.dataExpiracao = new Date(Date.now() + weeksNum * 7 * 24 * 60 * 60 * 1000);
         await anuncio.save();
 
-        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
-        const user = await Usuario.findById(usuarioId);
-        await notificarAdmin({
-          title: 'Novo Anúncio (Sandbox) 📢',
-          body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
-          data: { url: '/admin/pagamentos' }
+        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
+        Usuario.findById(usuarioId).then(user => {
+          notificarAdmin({
+            title: 'Novo Anúncio (Sandbox) 📢',
+            body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
+            data: { url: '/admin/pagamentos' }
+          }).catch(err => console.error('Erro push background:', err));
         });
 
         return res.status(201).json({
@@ -207,12 +209,13 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
       await pagamento.save();
 
-      // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
-      const user = await Usuario.findById(usuarioId);
-      await notificarAdmin({
-        title: 'Assinatura de Teste 🧪',
-        body: `${user?.nome || 'Usuário'} ativou plano Teste.`,
-        data: { url: '/admin/pagamentos' }
+      // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
+      Usuario.findById(usuarioId).then(user => {
+        notificarAdmin({
+          title: 'Assinatura de Teste 🧪',
+          body: `${user?.nome || 'Usuário'} ativou plano Teste.`,
+          data: { url: '/admin/pagamentos' }
+        }).catch(err => console.error('Erro push background:', err));
       });
 
       return res.status(201).json({
@@ -246,12 +249,13 @@ router.post('/processar', verificarToken, async (req, res) => {
     await pagamento.save();
 
     if (isSandboxSuccess) {
-      // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
-      const user = await Usuario.findById(usuarioId);
-      await notificarAdmin({
-        title: 'Nova Assinatura (Sandbox) ✨',
-        body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
-        data: { url: '/admin/pagamentos' }
+      // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
+      Usuario.findById(usuarioId).then(user => {
+        notificarAdmin({
+          title: 'Nova Assinatura (Sandbox) ✨',
+          body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
+          data: { url: '/admin/pagamentos' }
+        }).catch(err => console.error('Erro push background:', err));
       });
 
       return res.status(201).json({

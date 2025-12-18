@@ -134,9 +134,10 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
           console.log(`✅ Anúncio ${anuncioId} ativado por ${weeksNum} semana(s)`);
         }
 
-        // 🔔 ENVIAR NOTIFICAÇÕES WEBHOOK
+        // 🔔 ENVIAR NOTIFICAÇÕES (Em background para não atrasar resposta)
         const usuario = await Usuario.findById(usuarioId);
-        await webhookNotifier.sendWebhookNotification(usuarioId, 'payment.approved', {
+
+        webhookNotifier.sendWebhookNotification(usuarioId, 'payment.approved', {
           pagamentoId: pagamento._id.toString(),
           usuarioNome: usuario?.nome,
           usuarioEmail: usuario?.email,
@@ -147,18 +148,17 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
           dataPagamento: pagamento.dataPagamento,
           referencia: pagamento.referencia,
           anuncioNome
-        });
+        }).catch(err => console.error('Erro webhook background:', err));
 
-        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
-        await notificarAdmin({
+        notificarAdmin({
           title: 'Novo Pagamento Recebido! 💰',
           body: `${usuario?.nome || 'Um usuário'} acabou de pagar ${pagamento.valor} MZN via Cartão.`,
-          icon: '/icon.png', // Ajustar para o ícone real do app
+          icon: '/icon.png',
           data: {
             url: '/admin/pagamentos',
             pagamentoId: pagamento._id
           }
-        });
+        }).catch(err => console.error('Erro push background:', err));
 
       } catch (error) {
         console.error('❌ ERRO ao salvar no banco:', error.message);

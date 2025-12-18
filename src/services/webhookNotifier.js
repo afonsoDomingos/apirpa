@@ -37,17 +37,17 @@ class WebhookNotifier {
                 data: payloadData
             };
 
-            // 3. Enviar para cada webhook configurado
-            const promises = webhookConfigs.map(config =>
-                this.sendToWebhook(config, payload)
-            );
+            // 3. Enviar para cada webhook configurado e notificar admin em paralelo
+            // IMPORTANTE: Não usamos await direto nas promessas para não bloquear o fluxo
+            // Mas capturamos os erros internamente para log.
+            webhookConfigs.forEach(config => {
+                this.sendToWebhook(config, payload).catch(err => console.error('Erro webhook background:', err));
+            });
 
-            await Promise.allSettled(promises);
+            // Notificar admin via email e Socket.IO (também em paralelo)
+            this.notifyAdmin(payloadData).catch(err => console.error('Erro notifyAdmin background:', err));
 
-            // 4. Notificar admin via email e Socket.IO
-            await this.notifyAdmin(payloadData);
-
-            console.log('✅ [WEBHOOK] Processamento concluído\n');
+            console.log('✅ [WEBHOOK] Notificações disparadas em segundo plano\n');
 
         } catch (error) {
             console.error('❌ [WEBHOOK] Erro ao processar notificações:', error.message);
