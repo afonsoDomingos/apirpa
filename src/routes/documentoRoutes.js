@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Documento = require('../models/documentoModel');
+const PesquisaLog = require('../models/pesquisaLogModel');
 const verificarToken = require('../middleware/authMiddleware');
+const jwt = require('jsonwebtoken');
 
 // Testes básicos
 router.get('/', (req, res) => {
@@ -182,6 +184,67 @@ router.get('/documentos/count', async (req, res) => {
     res.status(200).json({ count });
   } catch (err) {
     res.status(500).json({ message: 'Erro ao contar documentos.', error: err.message });
+  }
+});
+
+/* ===============================
+    MONITORIZAÇÃO DE PESQUISAS
+=================================*/
+
+// Rota POST para registar uma pesquisa (Pública)
+router.post('/documentos/pesquisas', async (req, res) => {
+  const { termo, filtro, data } = req.body;
+
+  if (!termo || !filtro) {
+    return res.status(400).json({ message: 'Termo e filtro são obrigatórios.' });
+  }
+
+  try {
+    let usuarioId = null;
+
+    // Tentar extrair o usuário do token, se presente (opcional)
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      const token = authHeader.split(' ')[1];
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'seu_jwt_secret');
+          usuarioId = decoded.id;
+        } catch (err) {
+          // Ignora erro de token se for opcional
+        }
+      }
+    }
+
+    const novoLog = new PesquisaLog({
+      termo,
+      filtro,
+      data: data || Date.now(),
+      usuario: usuarioId
+    });
+
+    await novoLog.save();
+    res.status(201).json({ sucesso: true, log: novoLog });
+  } catch (err) {
+    console.error('Erro ao registar pesquisa:', err);
+    res.status(500).json({ message: 'Erro ao registar pesquisa.', error: err.message });
+  }
+});
+
+// Rota GET para listar todas as pesquisas (Admin apenas)
+router.get('/documentos/pesquisas', verificarToken, async (req, res) => {
+  if (req.usuario.role !== 'admin') {
+    return res.status(403).json({ message: 'Acesso negado. Apenas administradores podem ver os logs.' });
+  }
+
+  try {
+    const pesquisas = await PesquisaLog.find()
+      .populate('usuario', 'nome email') // Popula dados básicos do usuário
+      .sort({ data: -1 });
+
+    res.status(200).json({ sucesso: true, pesquisas });
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao buscar logs de pesquisa.', error: err.message });
   }
 });
 
