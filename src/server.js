@@ -226,7 +226,8 @@ io.on('connection', (socket) => {
 });
 
 app.set('io', io);
-global.io = io; // Disponibilizar io globalmente para webhookNotifier
+global.io = io; // Disponibilizar io globalmente para webhookNotifier e notificationService
+console.log("✅ Socket.IO disponibilizado em global.io");
 
 /* ===============================
     ROTA: FACEBOOK CONVERSIONS API

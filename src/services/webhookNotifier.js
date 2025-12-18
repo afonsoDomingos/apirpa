@@ -178,12 +178,12 @@ class WebhookNotifier {
     }
 
     /**
-     * Notifica admin via email e Socket.IO
+     * Notifica admin via email. O Socket.IO agora é gerido pelo notificationService.
      * @param {Object} payloadData - Dados do pagamento
      */
     async notifyAdmin(payloadData) {
         try {
-            console.log('\n📧 Enviando notificação ao admin...');
+            console.log('\n📧 Enviando notificação ao admin via Email...');
 
             // 1. Enviar email ao admin
             const emailResult = await emailService.sendPaymentNotificationToAdmin(payloadData);
@@ -194,23 +194,8 @@ class WebhookNotifier {
                 console.warn('⚠️ Falha ao enviar email ao admin:', emailResult.error);
             }
 
-            // 2. Enviar notificação Socket.IO em tempo real
-            // Nota: O io é configurado no server.js e acessível via req.app.get('io')
-            // Como este é um serviço, vamos emitir para todos os admins conectados
-            const io = global.io; // Será configurado no server.js
-
-            if (io) {
-                io.emit('admin:new-payment', {
-                    tipo: 'payment.approved',
-                    mensagem: `Novo pagamento de ${payloadData.valor} MZN recebido!`,
-                    data: payloadData,
-                    timestamp: new Date().toISOString()
-                });
-                console.log('✅ Notificação Socket.IO enviada aos admins');
-            }
-
         } catch (error) {
-            console.error('❌ Erro ao notificar admin:', error.message);
+            console.error('❌ Erro ao notificar admin via email:', error.message);
         }
     }
 }

@@ -40,18 +40,34 @@ async function sendPush(subscription, payload) {
 }
 
 /**
- * Notifica todos os administradores (Tempo Real)
+ * Notifica todos os administradores (Tempo Real via Push e Socket.IO)
  */
 async function notificarAdmin(payload) {
     try {
+        // ---- 1. WEB PUSH NOTIFICATION ----
         const adminSubscriptions = await PushSubscription.find({ isAdmin: true });
-
-        console.log(`🚀 [PUSH] Enviando notificações para ${adminSubscriptions.length} administradores.`);
+        console.log(`🚀 [PUSH SERVER] Enviando para ${adminSubscriptions.length} administradores.`);
 
         const notificationPromises = adminSubscriptions.map(sub => sendPush(sub.subscription, payload));
+
+        // ---- 2. SOCKET.IO REAL-TIME (SE ESTIVER CONECTADO) ----
+        const io = global.io;
+        if (io) {
+            const clientCount = io.engine.clientsCount;
+            console.log(`⚡ [SOCKET.IO] Tentando emitir admin:new-payment para ${clientCount} clientes conectados.`);
+
+            io.emit('admin:new-payment', {
+                sucesso: true,
+                timestamp: new Date().toISOString(),
+                ...payload
+            });
+        } else {
+            console.warn('⚠️ [SOCKET.IO] Instância io não encontrada em global.io .');
+        }
+
         await Promise.allSettled(notificationPromises);
     } catch (error) {
-        console.error('❌ [PUSH] Erro no serviço de notificação admin:', error);
+        console.error('❌ [NOTIFICATION SERVICE] Erro ao notificar admin:', error);
     }
 }
 
