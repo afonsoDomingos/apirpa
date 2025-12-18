@@ -6,6 +6,8 @@ const Pagamento = require('../models/pagamentoModel');
 const Anuncio = require('../models/Anuncio');
 const Gateway = require('../services/gateway');
 const mongoose = require('mongoose');
+const { notificarAdmin } = require('../services/notificationService');
+const Usuario = require('../models/usuarioModel');
 
 // === PREÇOS FIXOS (em MZN) ===
 const PRECO_TESTE = 0;
@@ -108,6 +110,14 @@ router.post('/processar', verificarToken, async (req, res) => {
         });
         await pagamento.save();
 
+        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
+        const user = await Usuario.findById(usuarioId);
+        await notificarAdmin({
+          title: 'Pagamento de Teste (Anúncio) 🧪',
+          body: `${user?.nome || 'Usuário'} ativou um anúncio via Teste.`,
+          data: { url: '/admin/pagamentos' }
+        });
+
         return res.status(201).json({
           sucesso: true, mensagem: 'Anúncio ativado com sucesso!', anuncioId: anuncio._id,
           weeks: weeksNum, validadeDias: weeksNum * 7, dataExpiracao: anuncio.dataExpiracao
@@ -145,6 +155,14 @@ router.post('/processar', verificarToken, async (req, res) => {
         anuncio.dataAtivacao = new Date();
         anuncio.dataExpiracao = new Date(Date.now() + weeksNum * 7 * 24 * 60 * 60 * 1000);
         await anuncio.save();
+
+        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
+        const user = await Usuario.findById(usuarioId);
+        await notificarAdmin({
+          title: 'Novo Anúncio (Sandbox) 📢',
+          body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
+          data: { url: '/admin/pagamentos' }
+        });
 
         return res.status(201).json({
           sucesso: true,
@@ -189,6 +207,14 @@ router.post('/processar', verificarToken, async (req, res) => {
       });
       await pagamento.save();
 
+      // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
+      const user = await Usuario.findById(usuarioId);
+      await notificarAdmin({
+        title: 'Assinatura de Teste 🧪',
+        body: `${user?.nome || 'Usuário'} ativou plano Teste.`,
+        data: { url: '/admin/pagamentos' }
+      });
+
       return res.status(201).json({
         sucesso: true, mensagem: 'Plano de teste ativado por 5 dias!',
         validadeDias: 5, expiraEm: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
@@ -220,6 +246,14 @@ router.post('/processar', verificarToken, async (req, res) => {
     await pagamento.save();
 
     if (isSandboxSuccess) {
+      // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
+      const user = await Usuario.findById(usuarioId);
+      await notificarAdmin({
+        title: 'Nova Assinatura (Sandbox) ✨',
+        body: `${user?.nome || 'Usuário'} pagou ${amount} MZN via ${method}.`,
+        data: { url: '/admin/pagamentos' }
+      });
+
       return res.status(201).json({
         sucesso: true,
         mensagem: `Plano ${pacote} ativado com sucesso! (Sandbox)`,

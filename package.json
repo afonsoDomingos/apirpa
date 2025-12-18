@@ -235,6 +235,7 @@
     "validator": "^13.15.15",
     "vary": "^1.1.2",
     "verror": "^1.10.0",
+    "web-push": "^3.6.7",
     "webidl-conversions": "^7.0.0",
     "whatwg-url": "^14.2.0",
     "wide-align": "^1.1.5",

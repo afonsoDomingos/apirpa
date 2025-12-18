@@ -19,6 +19,8 @@ const postsRoutes = require('./routes/postsRoutes');
 const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
+const pushRoutes = require('./routes/pushRoutes');
+const { notificarAdmin } = require('./services/notificationService');
 
 
 
@@ -145,6 +147,17 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
           dataPagamento: pagamento.dataPagamento,
           referencia: pagamento.referencia,
           anuncioNome
+        });
+
+        // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN
+        await notificarAdmin({
+          title: 'Novo Pagamento Recebido! 💰',
+          body: `${usuario?.nome || 'Um usuário'} acabou de pagar ${pagamento.valor} MZN via Cartão.`,
+          icon: '/icon.png', // Ajustar para o ícone real do app
+          data: {
+            url: '/admin/pagamentos',
+            pagamentoId: pagamento._id
+          }
         });
 
       } catch (error) {
@@ -275,6 +288,7 @@ app.use('/api/posts', postsRoutes);
 app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
 app.use('/api/anuncios', anunciosRouter);
+app.use('/api/push', pushRoutes);
 
 app.use('/uploads', express.static('uploads'));
 
