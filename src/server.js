@@ -292,6 +292,7 @@ app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
 app.use('/api/anuncios', anunciosRouter);
 app.use('/api/push', pushRoutes);
+app.use('/api/atividades', require('./routes/atividadeRoutes'));
 
 app.use('/uploads', express.static('uploads'));
 
