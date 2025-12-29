@@ -246,7 +246,7 @@ router.delete('/:postId', verificarToken, async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post não encontrado' });
 
     // Permite excluir se for o autor OU se for admin
-    if (post.autor.toString() !== req.usuario.id.toString() && req.usuario.role !== 'admin') {
+    if (post.autor.toString() !== req.usuario.id.toString() && req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
       return res.status(403).json({ message: 'Sem permissão para deletar este post' });
     }
 

@@ -113,7 +113,8 @@ router.post('/processar', verificarToken, async (req, res) => {
         // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
         Usuario.findById(usuarioId).then(user => {
           notificarAdmin({
-            title: 'Pagamento Recebido 💰',
+            title: '💰 Pagamento Recebido',
+            icon: process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/uploads/notification-icon.png` : '/uploads/notification-icon.png',
             body: `${user?.nome || 'Usuário'} pagou ${amount.toFixed(2)} MZN para Anúncio (Teste).`,
             data: { url: '/admin/pagamentos', valor: amount, usuario: user?.nome }
           }).catch(err => console.error('Erro push background:', err));
@@ -160,7 +161,8 @@ router.post('/processar', verificarToken, async (req, res) => {
         // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
         Usuario.findById(usuarioId).then(user => {
           notificarAdmin({
-            title: 'Pagamento Recebido 💰',
+            title: '💰 Pagamento Recebido',
+            icon: process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/uploads/notification-icon.png` : '/uploads/notification-icon.png',
             body: `${user?.nome || 'Usuário'} pagou ${amount.toFixed(2)} MZN para Anúncio (${method}).`,
             data: { url: '/admin/pagamentos', valor: amount, usuario: user?.nome }
           }).catch(err => console.error('Erro push background:', err));
@@ -212,7 +214,7 @@ router.post('/processar', verificarToken, async (req, res) => {
       // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
       Usuario.findById(usuarioId).then(user => {
         notificarAdmin({
-          title: 'Pagamento Recebido 💰',
+          title: '💰 Pagamento Recebido',
           body: `${user?.nome || 'Usuário'} pagou ${PRECO_TESTE.toFixed(2)} MZN para Assinatura (Teste).`,
           data: { url: '/admin/pagamentos', valor: PRECO_TESTE, usuario: user?.nome }
         }).catch(err => console.error('Erro push background:', err));
@@ -252,7 +254,7 @@ router.post('/processar', verificarToken, async (req, res) => {
       // 🔔 NOTIFICAÇÃO PUSH PARA ADMIN (Background)
       Usuario.findById(usuarioId).then(user => {
         notificarAdmin({
-          title: 'Pagamento Recebido 💰',
+          title: '💰 Pagamento Recebido',
           body: `${user?.nome || 'Usuário'} pagou ${amount.toFixed(2)} MZN para Assinatura (${method}).`,
           data: { url: '/admin/pagamentos', valor: amount, usuario: user?.nome }
         }).catch(err => console.error('Erro push background:', err));
@@ -329,7 +331,7 @@ router.get("/meus", verificarToken, async (req, res) => {
 // 3. ADMIN: LISTAR TODOS
 // ==============================================================
 router.get("/", verificarToken, async (req, res) => {
-  if (req.usuario.role !== "admin") {
+  if (req.usuario.role !== "admin" && req.usuario.role !== "SuperAdmin") {
     return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
   }
 
@@ -387,7 +389,7 @@ router.get("/:id", verificarToken, async (req, res) => {
 
     if (!pagamento) return res.status(404).json({ sucesso: false, mensagem: "Pagamento não encontrado." });
 
-    if (pagamento.usuarioId.toString() !== req.usuario.id && req.usuario.role !== "admin") {
+    if (pagamento.usuarioId.toString() !== req.usuario.id && req.usuario.role !== "admin" && req.usuario.role !== "SuperAdmin") {
       return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
     }
 
@@ -413,7 +415,7 @@ router.get("/:id", verificarToken, async (req, res) => {
 // 5. EXCLUIR (ADMIN)
 // ==============================================================
 router.delete("/:id", verificarToken, async (req, res) => {
-  if (req.usuario.role !== "admin") {
+  if (req.usuario.role !== "admin" && req.usuario.role !== "SuperAdmin") {
     return res.status(403).json({ sucesso: false, mensagem: "Acesso negado." });
   }
 

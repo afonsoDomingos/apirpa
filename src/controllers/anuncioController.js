@@ -20,7 +20,7 @@ const upload = multer({
 // === ADMIN MIDDLEWARE ===
 const adminOnly = (req, res, next) => {
   if (!req.usuario) return res.status(401).json({ sucesso: false, mensagem: 'Login necessário' });
-  if (req.usuario.role !== 'admin') {
+  if (req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
     return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado: apenas admin' });
   }
   next();
@@ -347,9 +347,9 @@ const estatisticasDoDono = async (req, res) => {
     });
 
     if (!anuncio) {
-      return res.status(404).json({ 
-        sucesso: false, 
-        mensagem: 'Anúncio não encontrado ou você não tem permissão' 
+      return res.status(404).json({
+        sucesso: false,
+        mensagem: 'Anúncio não encontrado ou você não tem permissão'
       });
     }
 

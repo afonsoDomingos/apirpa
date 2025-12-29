@@ -9,7 +9,9 @@ const verificarToken = require('../middleware/authMiddleware');
  * @access  Private
  */
 router.post('/', verificarToken, async (req, res) => {
-    console.log('📩 [POST /api/atividades] Nova atividade recebida:', req.body);
+    const timestamp = new Date().toLocaleString('pt-MZ');
+    console.log(`\n[${timestamp}] 📩 [POST /api/atividades] Nova atividade recebida:`, req.body);
+    console.log(`[${timestamp}] 👤 Usuário solicitante: ${req.usuario.id} (${req.usuario.role})`);
 
     const { setorId, titulo, descricao, status, data } = req.body;
 
@@ -56,16 +58,21 @@ router.post('/', verificarToken, async (req, res) => {
  * @access  Private
  */
 router.get('/', verificarToken, async (req, res) => {
+    const timestamp = new Date().toLocaleString('pt-MZ');
     const { usuarioId, setorId } = req.query;
     const { id: currentUserId, role } = req.usuario;
 
-    console.log(`🔍 [GET /api/atividades] Buscando atividades. User: ${currentUserId}, Role: ${role}`);
+    console.log(`\n[${timestamp}] 🔍 [GET /api/atividades] Buscando atividades.`);
+    console.log(`[${timestamp}] 🛂 User: ${currentUserId} | Role: ${role}`);
+    if (usuarioId || setorId) {
+        console.log(`[${timestamp}] ⚙️ Filtros aplicados - usuarioId: ${usuarioId || 'nenhum'}, setorId: ${setorId || 'nenhum'}`);
+    }
 
     try {
         let query = {};
 
         // Lógica de permissão
-        if (role === 'admin') {
+        if (role === 'admin' || role === 'SuperAdmin') {
             // Admin pode filtrar por usuário ou setor
             if (usuarioId) query.usuario = usuarioId;
             if (setorId) query.setorId = setorId;
@@ -96,11 +103,13 @@ router.get('/', verificarToken, async (req, res) => {
  * @access  Private
  */
 router.patch('/:id', verificarToken, async (req, res) => {
+    const timestamp = new Date().toLocaleString('pt-MZ');
     const { id } = req.params;
     const { status, descricao } = req.body;
     const { id: currentUserId, role } = req.usuario;
 
-    console.log(`📝 [PATCH /api/atividades/${id}] Tentativa de atualização:`, req.body);
+    console.log(`\n[${timestamp}] 📝 [PATCH /api/atividades/${id}] Tentativa de atualização.`);
+    console.log(`[${timestamp}] 👤 User: ${currentUserId} | Payload:`, req.body);
 
     try {
         const atividade = await Atividade.findById(id);
@@ -111,7 +120,7 @@ router.patch('/:id', verificarToken, async (req, res) => {
         }
 
         // Verificar permissão: Dono da atividade ou Admin
-        if (atividade.usuario.toString() !== currentUserId && role !== 'admin') {
+        if (atividade.usuario.toString() !== currentUserId && role !== 'admin' && role !== 'SuperAdmin') {
             console.log(`⛔ [PATCH /api/atividades/${id}] Acesso negado para o usuário ${currentUserId}`);
             return res.status(403).json({ success: false, message: 'Você não tem permissão para atualizar esta atividade.' });
         }
@@ -145,10 +154,11 @@ router.patch('/:id', verificarToken, async (req, res) => {
  * @access  Private
  */
 router.delete('/:id', verificarToken, async (req, res) => {
+    const timestamp = new Date().toLocaleString('pt-MZ');
     const { id } = req.params;
     const { id: currentUserId, role } = req.usuario;
 
-    console.log(`🗑️ [DELETE /api/atividades/${id}] Tentativa de remoção por ${currentUserId}`);
+    console.log(`\n[${timestamp}] 🗑️ [DELETE /api/atividades/${id}] Tentativa de remoção por ${currentUserId} (${role})`);
 
     try {
         const atividade = await Atividade.findById(id);
@@ -159,7 +169,7 @@ router.delete('/:id', verificarToken, async (req, res) => {
         }
 
         // Verificar permissão: Dono da atividade ou Admin
-        if (atividade.usuario.toString() !== currentUserId && role !== 'admin') {
+        if (atividade.usuario.toString() !== currentUserId && role !== 'admin' && role !== 'SuperAdmin') {
             console.log(`⛔ [DELETE /api/atividades/${id}] Acesso negado.`);
             return res.status(403).json({ success: false, message: 'Você não tem permissão para remover esta atividade.' });
         }

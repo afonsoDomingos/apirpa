@@ -24,7 +24,7 @@ async function sendPush(subscription, payload) {
     try {
         await webPush.sendNotification(subscription, JSON.stringify({
             ...payload,
-            badge: '/badge-icon.png',
+            badge: process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/uploads/notification-icon.png` : '/uploads/notification-icon.png',
             vibrate: [100, 50, 100]
         }));
         return { success: true };

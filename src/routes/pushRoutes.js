@@ -12,7 +12,7 @@ router.get('/key', (req, res) => {
 router.post('/subscribe', verificarToken, async (req, res) => {
     const { subscription } = req.body;
     const usuarioId = req.usuario.id;
-    const isAdmin = req.usuario.role === 'admin';
+    const isAdmin = req.usuario.role === 'admin' || req.usuario.role === 'SuperAdmin';
 
     try {
         // Remove subscrição antiga do mesmo usuário no mesmo endpoint se existir para evitar duplicatas
@@ -54,7 +54,7 @@ router.post('/test', verificarToken, async (req, res) => {
         const payload = {
             title: 'Teste de Notificação 🔔',
             body: 'Se você está vendo isso, suas notificações estão funcionando corretamente!',
-            icon: '/icon.png',
+            icon: process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/uploads/notification-icon.png` : '/uploads/notification-icon.png',
             data: { url: '/settings' }
         };
 

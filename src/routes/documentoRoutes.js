@@ -124,7 +124,7 @@ router.put('/documentos/:id', verificarToken, async (req, res) => {
     const documento = await Documento.findById(id);
     if (!documento) return res.status(404).json({ message: 'Documento não encontrado.' });
 
-    if (documento.usuario.toString() !== req.usuario.id && req.usuario.role !== 'admin') {
+    if (documento.usuario.toString() !== req.usuario.id && req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
       return res.status(403).json({ message: 'Acesso negado.' });
     }
 
@@ -140,7 +140,7 @@ router.patch('/documentos/:id/status', verificarToken, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (req.usuario.role !== 'admin') {
+  if (req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
     return res.status(403).json({ error: 'Apenas administradores podem alterar o status.' });
   }
 
@@ -166,7 +166,7 @@ router.delete('/documentos/:id', verificarToken, async (req, res) => {
     const documento = await Documento.findById(id);
     if (!documento) return res.status(404).json({ message: 'Documento não encontrado.' });
 
-    if (documento.usuario.toString() !== req.usuario.id && req.usuario.role !== 'admin') {
+    if (documento.usuario.toString() !== req.usuario.id && req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
       return res.status(403).json({ message: 'Você não tem permissão para apagar este documento.' });
     }
 
@@ -233,7 +233,7 @@ router.post('/documentos/pesquisas', async (req, res) => {
 
 // Rota GET para listar todas as pesquisas (Admin apenas)
 router.get('/documentos/pesquisas', verificarToken, async (req, res) => {
-  if (req.usuario.role !== 'admin') {
+  if (req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
     return res.status(403).json({ message: 'Acesso negado. Apenas administradores podem ver os logs.' });
   }
 

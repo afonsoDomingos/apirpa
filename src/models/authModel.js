@@ -23,7 +23,7 @@ const authSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'cliente'],
+    enum: ['admin', 'cliente', 'SuperAdmin'],
     default: 'cliente'
   }
 }, { timestamps: true });
@@ -40,6 +40,6 @@ authSchema.methods.matchSenha = async function (senhaFornecida) {
   return await bcryptjs.compare(senhaFornecida, this.senha);
 };
 
-const Usuario = mongoose.model('Usuario', authSchema);
+const Usuario = mongoose.models.Usuario || mongoose.model('Usuario', authSchema);
 
 module.exports = Usuario;

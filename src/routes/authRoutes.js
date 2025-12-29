@@ -89,7 +89,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = gerarTokenJWT({ id: usuario._id, role: usuario.role }, '7d');
-    const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
+    const redirectUrl = (usuario.role === 'admin' || usuario.role === 'SuperAdmin') ? '/dashboard/admin' : '/home';
 
     console.log("✅ /login - Login bem-sucedido:", email);
     return res.json({
@@ -159,7 +159,7 @@ router.post('/google', async (req, res) => {
     }
 
     const jwtToken = gerarTokenJWT({ id: usuario._id, role: usuario.role }, '7d');
-    const redirectUrl = usuario.role === 'admin' ? '/dashboard/admin' : '/home';
+    const redirectUrl = (usuario.role === 'admin' || usuario.role === 'SuperAdmin') ? '/dashboard/admin' : '/home';
 
     return res.json({
       msg: "Login via Google bem-sucedido",
@@ -199,7 +199,7 @@ router.get('/me', verificarToken, async (req, res) => {
 // Obter usuários (ADMIN ONLY)
 // =======================
 router.get('/usuarios', verificarToken, async (req, res) => {
-  if (req.usuario.role !== 'admin') {
+  if (req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
     return res.status(403).json({ msg: 'Acesso negado: apenas admin' });
   }
 
@@ -231,7 +231,7 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
   const { nome, senha, email, role } = req.body;
 
   // Permissão: admin ou o próprio usuário
-  if (req.usuario.id !== id && req.usuario.role !== 'admin') {
+  if (req.usuario.id !== id && req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
     console.log("❌ PATCH /usuarios/:id - Acesso negado:", req.usuario, "tentando alterar", id);
     return res.status(403).json({ msg: 'Acesso negado' });
   }
@@ -251,7 +251,7 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
       }
       updateData.email = email;
     }
-    if (role && req.usuario.role === 'admin') {
+    if (role && (req.usuario.role === 'admin' || req.usuario.role === 'SuperAdmin')) {
       updateData.role = role;
     }
 
@@ -282,7 +282,7 @@ router.patch('/usuarios/:id', verificarToken, async (req, res) => {
 // =======================
 router.delete('/usuarios/:id', verificarToken, async (req, res) => {
   const { id } = req.params;
-  if (req.usuario.role !== 'admin') {
+  if (req.usuario.role !== 'admin' && req.usuario.role !== 'SuperAdmin') {
     console.log("❌ DELETE /usuarios/:id - Acesso negado para:", req.usuario);
     return res.status(403).json({ msg: 'Acesso negado' });
   }

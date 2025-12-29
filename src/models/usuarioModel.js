@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     nome: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['cliente', 'admin'], default: 'cliente' },
+    role: { type: String, enum: ['cliente', 'admin', 'SuperAdmin'], default: 'cliente' },
 
     // --- Campos para a Gestão da Assinatura do Usuário ---
     assinaturaAtiva: {
@@ -30,7 +30,7 @@ const userSchema = new mongoose.Schema({
     timestamps: true
 });
 
-userSchema.virtual('diasRestantes').get(function() {
+userSchema.virtual('diasRestantes').get(function () {
     if (!this.assinaturaExpiracao || !this.assinaturaAtiva) {
         return 0;
     }
