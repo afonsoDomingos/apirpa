@@ -36,11 +36,22 @@ const storagePosts = new CloudinaryStorage({
   },
 });
 
-console.log('Storages criados: rpa_noticias, rpa_anuncios e rpa_posts');
+// === PASTA: COMPROVATIVOS DE PAGAMENTO (NOVO) ===
+const storageComprovativos = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'rpa_comprovativos',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    resource_type: 'auto' // Permite imagens e PDFs
+  },
+});
+
+console.log('Storages criados: rpa_noticias, rpa_anuncios, rpa_posts e rpa_comprovativos');
 
 module.exports = {
   cloudinary,
   storageNoticias,
   storageAnuncios,
-  storagePosts
+  storagePosts,
+  storageComprovativos
 };

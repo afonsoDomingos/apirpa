@@ -20,6 +20,7 @@ const emolaCallbackRoutes = require('./routes/emolaCallback');
 const emolaTestRouter = require('./routes/emolaTest');
 const anunciosRouter = require('./routes/anuncios');
 const pushRoutes = require('./routes/pushRoutes');
+const comprovativoRoutes = require('./routes/comprovativoRoutes');
 const { notificarAdmin } = require('./services/notificationService');
 
 
@@ -292,6 +293,7 @@ app.use('/api/emola', emolaCallbackRoutes);
 app.use('/api/emola/test', emolaTestRouter);
 app.use('/api/anuncios', anunciosRouter);
 app.use('/api/push', pushRoutes);
+app.use('/api/comprovativos', comprovativoRoutes);
 app.use('/api/atividades', require('./routes/atividadeRoutes'));
 
 app.use('/uploads', express.static('uploads'));
