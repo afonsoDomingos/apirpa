@@ -44,6 +44,10 @@ const anuncioSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  dataAtivacao: {
+    type: Date,
+    default: null
+  },
   status: {
     type: String,
     enum: ['pending', 'active', 'paused', 'expired', 'rejected'],

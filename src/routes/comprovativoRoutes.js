@@ -5,6 +5,7 @@ const verificarToken = require('../middleware/authMiddleware');
 const Comprovativo = require('../models/comprovativoModel');
 const Pagamento = require('../models/pagamentoModel');
 const Usuario = require('../models/usuarioModel');
+const Anuncio = require('../models/Anuncio');
 const multer = require('multer');
 const { storageComprovativos } = require('../config/cloudinary');
 const { notificarAdmin } = require('../services/notificationService');
@@ -37,11 +38,13 @@ router.post(
                 valor_pago,
                 referencia,
                 observacoes,
-                tipo
+                tipo,
+                pacote,
+                anuncioId
             } = req.body;
 
             // Validações
-            if (!metodo_pagamento || !valor_pago || !referencia || !tipo) {
+            if (!metodo_pagamento || !valor_pago || !referencia || !tipo || !pacote) {
                 return res.status(400).json({
                     sucesso: false,
                     mensagem: 'Dados incompletos. Preencha todos os campos obrigatórios.'
@@ -64,6 +67,14 @@ router.post(
                 });
             }
 
+            // Validar anuncioId se for tipo 'anuncio'
+            if (tipo === 'anuncio' && !anuncioId) {
+                return res.status(400).json({
+                    sucesso: false,
+                    mensagem: 'Para pagamentos de anúncios, o ID do anúncio é obrigatório.'
+                });
+            }
+
             // Criar comprovativo no banco de dados
             const comprovativo = await Comprovativo.create({
                 usuarioId: req.usuario.id,
@@ -72,6 +83,8 @@ router.post(
                 referencia: referencia.trim(),
                 observacoes: observacoes ? observacoes.trim() : null,
                 tipo,
+                pacote,
+                anuncioId: anuncioId || null,
                 arquivo_path: req.file.path, // URL do Cloudinary
                 status: 'pendente'
             });
@@ -281,31 +294,60 @@ router.put('/:id/aprovar', verificarToken, async (req, res) => {
         comprovativo.admin_responsavel = req.usuario.id;
         await comprovativo.save();
 
-        // TODO: Aqui você pode criar automaticamente um pagamento aprovado
-        // Exemplo:
-        /*
+        // ==============================================================
+        // ATIVAÇÃO AUTOMÁTICA DO SERVIÇO
+        // ==============================================================
+
+        // 1. Criar registro de Pagamento aprovado
         const novoPagamento = await Pagamento.create({
-          usuarioId: comprovativo.usuarioId._id,
-          pacote: comprovativo.tipo, // ou mapear conforme necessário
-          metodoPagamento: comprovativo.metodo_pagamento,
-          valor: comprovativo.valor_pago,
-          status: 'aprovado',
-          tipoPagamento: comprovativo.tipo,
-          dataPagamento: new Date(),
-          referencia: comprovativo.referencia,
-          gatewayResponse: { message: 'Aprovado via comprovativo manual' }
+            usuarioId: comprovativo.usuarioId._id,
+            pacote: comprovativo.pacote,
+            metodoPagamento: comprovativo.metodo_pagamento,
+            valor: comprovativo.valor_pago,
+            status: 'aprovado',
+            tipoPagamento: comprovativo.tipo,
+            dataPagamento: new Date(),
+            referencia: comprovativo.referencia,
+            gatewayResponse: { message: 'Aprovado via comprovativo manual pelo Admin' },
+            anuncioId: comprovativo.anuncioId
         });
-        */
+
+        // 2. Ativar Assinatura se for o caso
+        if (comprovativo.tipo === 'assinatura') {
+            const diasValidade = comprovativo.pacote === 'anual' ? 365 : 30;
+            const dataExpiracao = new Date();
+            dataExpiracao.setDate(dataExpiracao.getDate() + diasValidade);
+
+            await Usuario.findByIdAndUpdate(comprovativo.usuarioId._id, {
+                assinaturaAtiva: true,
+                assinaturaExpiracao: dataExpiracao,
+                pacoteAtual: comprovativo.pacote.charAt(0).toUpperCase() + comprovativo.pacote.slice(1)
+            });
+        }
+
+        // 3. Ativar Anúncio se for o caso
+        else if (comprovativo.tipo === 'anuncio' && comprovativo.anuncioId) {
+            const anuncio = await Anuncio.findById(comprovativo.anuncioId);
+            if (anuncio) {
+                const weeks = parseInt(anuncio.weeks) || 1;
+                anuncio.status = 'active';
+                anuncio.dataAtivacao = new Date(); // Campo adicionado ao modelo
+                // Usa expiresAt conforme definido no Anuncio.js
+                anuncio.expiresAt = new Date(Date.now() + weeks * 7 * 24 * 60 * 60 * 1000);
+                await anuncio.save();
+            }
+        }
 
         res.json({
             sucesso: true,
-            mensagem: 'Comprovativo aprovado com sucesso!',
+            mensagem: 'Comprovativo aprovado e serviço ativado com sucesso!',
             comprovativo: {
                 id: comprovativo._id,
                 status: comprovativo.status,
                 data_analise: comprovativo.data_analise,
                 observacoes_admin: comprovativo.observacoes_admin
-            }
+            },
+            pagamentoId: novoPagamento._id
         });
 
     } catch (error) {

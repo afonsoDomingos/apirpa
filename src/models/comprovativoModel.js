@@ -17,6 +17,16 @@ const comprovativoSchema = new mongoose.Schema({
     enum: ['assinatura', 'anuncio', 'outro'],
     required: true
   },
+  pacote: {
+    type: String,
+    enum: ['mensal', 'anual', 'anuncio', 'outro'],
+    required: true
+  },
+  anuncioId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Anuncio',
+    default: null
+  },
   valor_pago: {
     type: Number,
     required: true,

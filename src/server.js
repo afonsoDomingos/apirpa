@@ -22,6 +22,7 @@ const anunciosRouter = require('./routes/anuncios');
 const pushRoutes = require('./routes/pushRoutes');
 const comprovativoRoutes = require('./routes/comprovativoRoutes');
 const { notificarAdmin } = require('./services/notificationService');
+const { iniciarKeepAlive } = require('./services/keepAlive');
 
 
 
