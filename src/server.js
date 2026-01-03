@@ -345,6 +345,9 @@ connectDB()
       console.log("📍 CAPI: POST /api/facebook/conversion");
       console.log("🟢 API pronta para receber requisições");
       console.log("====================================\n");
+
+      // Iniciar serviço de Keep-Alive para evitar cold start
+      iniciarKeepAlive();
     });
   })
   .catch(err => {
