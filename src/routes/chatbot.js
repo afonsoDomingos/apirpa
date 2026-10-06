@@ -203,11 +203,29 @@ router.post('/tts', async (req, res) => {
   // Voz padrão: Bella (EXAVITQu4vr4xnSDxMaL) - voz natural, empática e compatível com conta gratuita
   const selectedVoiceId = voiceId || process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
+  // Limpar emojis, ícones, URLs e formatações para que o ElevenLabs leia apenas texto natural
+  const cleanText = text
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[0-9]️⃣/gu, "")
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1FA70}-\u{1FAFF}\u{200D}\u{FE0F}]/gu, "")
+    .replace(/[➔➜➡➤▶►◀◄▲▼●◆■▪▫★☆✨💡🔔🎉⚠️❌✅❓❗🔍🔎📌📍💬👤📄📅🔢]/gu, "")
+    .replace(/[*_#`~>|]/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1000);
+
+  if (!cleanText) {
+    return res.status(400).json({ error: 'Texto vazio após filtragem de ícones' });
+  }
+
   try {
     const response = await axios.post(
       `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`,
       {
-        text: text.slice(0, 1000), // limite de segurança por mensagem
+        text: cleanText,
         model_id: 'eleven_multilingual_v2',
         voice_settings: {
           stability: 0.5,
