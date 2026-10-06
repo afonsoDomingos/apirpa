@@ -188,4 +188,59 @@ router.get('/test', async (req, res) => {
   }
 });
 
+// ✅ Rota TTS com ElevenLabs (Voz Ultra-Realista de IA)
+router.post('/tts', async (req, res) => {
+  const { text, voiceId } = req.body;
+  if (!text) {
+    return res.status(400).json({ error: 'Texto não fornecido' });
+  }
+
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: 'ELEVENLABS_API_KEY não configurada' });
+  }
+
+  // Voz padrão: Rachel (natural, acolhedora em português) ou definida por variável de ambiente
+  const selectedVoiceId = voiceId || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
+
+  try {
+    const response = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`,
+      {
+        text: text.slice(0, 1000), // limite de segurança por mensagem
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.0,
+          use_speaker_boost: true
+        }
+      },
+      {
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg'
+        },
+        responseType: 'arraybuffer',
+        timeout: 20000
+      }
+    );
+
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': response.data.length,
+      'Cache-Control': 'public, max-age=86400'
+    });
+
+    return res.send(Buffer.from(response.data));
+  } catch (error) {
+    console.error('[ElevenLabs TTS] Erro:', error.response?.data ? error.response.data.toString() : error.message);
+    return res.status(500).json({ 
+      error: 'Falha ao sintetizar áudio com ElevenLabs',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;
