@@ -9,10 +9,21 @@ if (!process.env.OPENROUTER_API_KEY) {
   console.log('[RPA Assistente] Chave OPENROUTER_API_KEY detectada com sucesso.');
 }
 
+// ✅ Padrões de saudação reconhecidos pelo agente
+const GREETING_REGEX = /^\s*(ol[aá]|oi+|boa\s*tarde|bom\s*dia|boa\s*noite|hey|hi|hello|boas|al[oô]|e a[ií]|eae|iae|tudo\s*bem|como\s*(vai|est[aá]s?)|saud[aá][çc][aã]o|salve|olá\s*a\s*todos)\s*[!.?]*\s*$/i;
+
+const WELCOME_REPLY = 'Olá! 😊 Seja bem-vindo(a) à RPA Moçambique!\nComo posso ajudar?';
+
 // ✅ Rota principal do chatbot
 router.post('/', async (req, res) => {
   const { message } = req.body;
   console.log(`[RPA Assistente] Mensagem recebida do usuário: "${message}"`);
+
+  // ✅ Deteção de saudação — resposta instantânea sem consumir tokens da IA
+  if (message && GREETING_REGEX.test(message.trim())) {
+    console.log('[RPA Assistente] Saudação detetada — respondendo com boas-vindas padrão.');
+    return res.json({ reply: WELCOME_REPLY });
+  }
 
   try {
     console.log('[RPA Assistente] Enviando requisição para OpenRouter...');
@@ -30,6 +41,13 @@ Você é um Assistente, especializado em ajudar usuários na plataforma Rpa/Recu
 ⚠️ Regras de conduta:
 
 Responda sempre em português, de forma educada, curta e objetiva.
+
+👋 SAUDAÇÕES — REGRA OBRIGATÓRIA:
+Sempre que o usuário enviar uma saudação (como "Olá", "Oi", "Bom dia", "Boa tarde", "Hey", etc.),
+responda SEMPRE exatamente com:
+Olá! 😊 Seja bem-vindo(a) à RPA Moçambique!
+Como posso ajudar?
+Nunca altere esta mensagem de boas-vindas.
 
 Quando apresentar informações ou etapas, seguir este formato:
 
@@ -203,19 +221,39 @@ router.post('/tts', async (req, res) => {
   // Voz padrão: Bella (EXAVITQu4vr4xnSDxMaL) - voz natural, empática e compatível com conta gratuita
   const selectedVoiceId = voiceId || process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
-  // Limpar emojis, ícones, URLs e formatações para que o ElevenLabs leia apenas texto natural
-  const cleanText = text
+  // Limpar emojis, ícones, URLs e converter quebras em pausas pontuadas
+  let formatted = text
+    .replace(/<br\s*\/?>/gi, ". ")
+    .replace(/<\/(p|div|h[1-6])>/gi, ". ")
+    .replace(/<\/li>/gi, "; ")
+    .replace(/\n+/g, ". ");
+
+  const cleanText = formatted
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/\p{Extended_Pictographic}/gu, "")
-    .replace(/[0-9]️⃣/gu, "")
+    .replace(/[0-9]\uFE0F\u20E3/gu, "")
     .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1FA70}-\u{1FAFF}\u{200D}\u{FE0F}]/gu, "")
-    .replace(/[➔➜➡➤▶►◀◄▲▼●◆■▪▫★☆✨💡🔔🎉⚠️❌✅❓❗🔍🔎📌📍💬👤📄📅🔢]/gu, "")
+    .replace(/[\u2794\u279C\u27A1\u27A4\u25B6\u25BA\u25C0\u25C4\u25B2\u25BC\u25CF\u25C6\u25A0\u25AA\u25AB\u2605\u2606]/gu, "")
     .replace(/[*_#`~>|]/g, " ")
-    .replace(/\s+([,.;:!?])/g, "$1")
+    // Remove traço/hífen como bullet
+    .replace(/(^|\. )[-\u2013\u2014]\s+/g, "$1")
+    // Remove numerais de lista ("1. ", "2. ")
+    .replace(/(^|\. )\d+\.\s+/g, "$1")
+    // Remove bullets de letra ("a) ", "b) ")
+    .replace(/(^|\. )[a-zA-Z]\)\s+/g, "$1")
+    // Dois-pontos após palavra vira vírgula
+    .replace(/(\w):\s+/g, "$1, ")
+    .replace(/([.?!])\s*(\.)+/g, "$1 ")
+    .replace(/\.{2,}/g, ". ")
+    .replace(/\s*([,.;:!?])\s*/g, "$1 ")
+    .replace(/([.?!])[\s.;,]+/g, "$1 ")
+    .replace(/;\s*;+/g, "; ")
+    .replace(/\.[  ]([A-Z\u00C1\u00C9\u00CD\u00D3\u00DA\u00C0\u00C2\u00CA\u00D4\u00C3\u00D5\u00C7])/g, ". $1")
+    .replace(/^[,.;:\s]+/, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 1000);
+    .slice(0, 2500);
 
   if (!cleanText) {
     return res.status(400).json({ error: 'Texto vazio após filtragem de ícones' });
@@ -228,9 +266,9 @@ router.post('/tts', async (req, res) => {
         text: cleanText,
         model_id: 'eleven_multilingual_v2',
         voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          style: 0.0,
+          stability: 0.55,        // Mais baixo = pausa mais natural, respiração real entre frases
+          similarity_boost: 0.78, // Fidelidade à voz original Bella
+          style: 0.00,            // Sem dramatização extra — soa mais neutro e natural
           use_speaker_boost: true
         }
       },
