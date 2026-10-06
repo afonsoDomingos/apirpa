@@ -195,13 +195,13 @@ router.post('/tts', async (req, res) => {
     return res.status(400).json({ error: 'Texto não fornecido' });
   }
 
-  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const apiKey = process.env.ELEVENLABS_API_KEY || 'sk_48197567cd48614a39805cc544d310c21191c20f042b7061';
   if (!apiKey) {
     return res.status(503).json({ error: 'ELEVENLABS_API_KEY não configurada' });
   }
 
-  // Voz padrão: Rachel (natural, acolhedora em português) ou definida por variável de ambiente
-  const selectedVoiceId = voiceId || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
+  // Voz padrão: Bella (EXAVITQu4vr4xnSDxMaL) - voz natural, empática e compatível com conta gratuita
+  const selectedVoiceId = voiceId || process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
   try {
     const response = await axios.post(
