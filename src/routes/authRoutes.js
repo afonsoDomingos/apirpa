@@ -9,8 +9,9 @@ require('dotenv').config();
 
 const router = express.Router();
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-console.log("✅ GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '188106799517-esto365boufh7oo6jeaa6cktt03pacjm.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+console.log("✅ GOOGLE_CLIENT_ID configurado:", GOOGLE_CLIENT_ID ? "SIM" : "NÃO");
 
 // Função utilitária para gerar JWT
 function gerarTokenJWT(payload, expiresIn = '7d') {
@@ -119,9 +120,10 @@ router.post('/google', async (req, res) => {
     return res.status(400).json({ msg: 'Token ausente' });
   }
   try {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID;
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: googleClientId,
     });
 
     const payload = ticket.getPayload();
@@ -135,10 +137,11 @@ router.post('/google', async (req, res) => {
     let usuario = await Usuario.findOne({ email });
 
     if (!usuario) {
-      // Cria novo usuário para conta Google
+      // Cria novo usuário para conta Google com garantia de nome válido (mínimo 3 caracteres exigidos pelo schema)
+      const nomeValido = (name && name.trim().length >= 3) ? name.trim() : (email.split('@')[0] || "Usuário Google");
       const senhaAleatoria = await bcryptjs.hash(email + Date.now(), 10);
       usuario = new Usuario({
-        nome: name,
+        nome: nomeValido,
         email,
         senha: senhaAleatoria,
         role: "cliente",
@@ -147,12 +150,16 @@ router.post('/google', async (req, res) => {
       });
       await usuario.save();
 
-      // Enviar e-mail de boas-vindas para novo usuário Google
-      await enviarEmail(
-        email,
-        "Bem-vindo à RPA Moçambique!",
-        `<h1>Olá ${name}!</h1><p>Seu cadastro foi realizado com sucesso via Google!</p>`
-      );
+      // Enviar e-mail de boas-vindas para novo usuário Google (não-bloqueante)
+      try {
+        await enviarEmail(
+          email,
+          "Bem-vindo à RPA Moçambique!",
+          `<h1>Olá ${nomeValido}!</h1><p>Seu cadastro foi realizado com sucesso via Google!</p>`
+        );
+      } catch (errEmail) {
+        console.warn("⚠️ Aviso: Falha ao enviar e-mail de boas-vindas Google (não impeditivo):", errEmail.message);
+      }
       console.log("✅ /google - Conta criada via Google:", email);
     } else {
       console.log("✅ /google - Usuário já existente, login via Google:", email);

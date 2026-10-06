@@ -4,6 +4,7 @@ const nodemailer = require('nodemailer');
 class EmailService {
   constructor() {
     this.transporter = null;
+    this.enviarEmail = this.enviarEmail.bind(this);
     this.initializeTransporter();
   }
 
