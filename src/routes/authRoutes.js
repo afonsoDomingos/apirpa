@@ -9,9 +9,10 @@ require('dotenv').config();
 
 const router = express.Router();
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '188106799517-esto365boufh7oo6jeaa6cktt03pacjm.apps.googleusercontent.com';
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_ID_FALLBACK = '188106799517-esto365boufh7oo6jeaa6cktt03pacjm.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID_FALLBACK;
 console.log("✅ GOOGLE_CLIENT_ID configurado:", GOOGLE_CLIENT_ID ? "SIM" : "NÃO");
+
 
 // Função utilitária para gerar JWT
 function gerarTokenJWT(payload, expiresIn = '7d') {
@@ -120,14 +121,26 @@ router.post('/google', async (req, res) => {
     return res.status(400).json({ msg: 'Token ausente' });
   }
   try {
-    const googleClientId = process.env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID;
+    // Criar cliente com ID atualizado a cada chamada (garante uso do .env em produção)
+    const googleClientId = process.env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID_FALLBACK;
+    const googleClient = new OAuth2Client();
+
+    // Verificar o token aceitando ambos os Client IDs (env + fallback)
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
-      audience: googleClientId,
+      audience: [
+        googleClientId,
+        GOOGLE_CLIENT_ID_FALLBACK,
+      ],
     });
 
     const payload = ticket.getPayload();
-    const { email, name, email_verified, picture } = payload;
+    if (!payload) {
+      console.log("❌ /google - Payload vazio");
+      return res.status(400).json({ msg: 'Token inválido: payload vazio' });
+    }
+
+    const { email, name, email_verified, picture, sub } = payload;
 
     if (!email_verified) {
       console.log("❌ /google - E-mail não verificado:", email);
@@ -145,8 +158,8 @@ router.post('/google', async (req, res) => {
         email,
         senha: senhaAleatoria,
         role: "cliente",
-        avatar: picture,
-        googleId: payload.sub
+        avatar: picture || '',
+        googleId: sub
       });
       await usuario.save();
 
@@ -162,6 +175,11 @@ router.post('/google', async (req, res) => {
       }
       console.log("✅ /google - Conta criada via Google:", email);
     } else {
+      // Atualizar googleId e avatar se ainda não estiverem guardados
+      let changed = false;
+      if (!usuario.googleId) { usuario.googleId = sub; changed = true; }
+      if (!usuario.avatar && picture) { usuario.avatar = picture; changed = true; }
+      if (changed) await usuario.save();
       console.log("✅ /google - Usuário já existente, login via Google:", email);
     }
 
@@ -181,8 +199,18 @@ router.post('/google', async (req, res) => {
       redirectUrl
     });
   } catch (error) {
-    console.error("❌ /google - Erro ao autenticar via Google:", error.message);
-    return res.status(500).json({ msg: "Erro no login via Google", erro: error.message });
+    const detail = error?.message || '';
+    console.error("❌ /google - Erro ao autenticar via Google:", detail);
+
+    // Erros específicos do Google (token expirado, audience errada, etc.)
+    if (detail.includes('Token used too late') || detail.includes('expired')) {
+      return res.status(401).json({ msg: 'Token do Google expirado. Tente novamente.', erro: detail });
+    }
+    if (detail.includes('Invalid token') || detail.includes('audience')) {
+      return res.status(401).json({ msg: 'Token do Google inválido.', erro: detail });
+    }
+
+    return res.status(500).json({ msg: "Erro no login via Google", erro: detail });
   }
 });
 
